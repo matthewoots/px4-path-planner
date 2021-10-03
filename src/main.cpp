@@ -89,7 +89,8 @@ void taskmaster::initialisation()
     ros::Rate rate(20.0);
     ros::Time last_request = ros::Time::now();
 
-    traj.start(_wp_file_location,_interval);
+    // Testing and debug purposes concerning the trajectory node
+    traj.setTrajectory(_wp_file_location,_interval);
 
     // Make Sure FCU is connected, wait for 5s if not connected.
     printf("%s[main.cpp] FCU Connection is %s \n", uav_current_state.connected? KBLU : KRED, uav_current_state.connected? "up" : "down");
@@ -134,7 +135,7 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
             retry++;
             break;
         }
-        printf("%s[main.cpp] Takeoff command received! \n", KBLU);
+        printf("%s[main.cpp] Takeoff command received! \n", KYEL);
         arm_cmd.request.value = true;
         uav_task = kTakeOff;
 
@@ -142,38 +143,35 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         {
             printf("%s[main.cpp] Offboard mode activated going to run takeoff \n", KBLU);
             mission_timer.start();
-            printf("%s[main.cpp] Mission timer started! \n", KYEL);
+            printf("%s[main.cpp] Mission timer started! \n", KGRN);
             takeoff_flag = true;
         }
         break;
     }
 
-    // case MISSION:
-    // {
-    //     if (!takeoff_flag)
-    //     {
-    //         ROS_ERROR("Vehilce has not taken off, please issue takeoff command first.");
-    //         break;
-    //     }
-    //     ROS_INFO("command received!");
-    //     ROS_INFO("Loading Trajectory...");
-    //     if (loadTrajectory())
-    //     {
+    case MISSION:
+    {
+        if (!takeoff_flag)
+        {
+            printf("%s[main.cpp] Vehicle has not taken off, please issue takeoff command first \n", KRED);
+            break;
+        }
+        printf("%s[main.cpp] Mission command received! \n", KYEL);
+        printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
+        if (!traj.setTrajectory(_wp_file_location,_interval))
+        {
+            printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
+            break;
+        }
+        uav_task = kMission;
+        mission_start_time = ros::Time::now().toNSec();
 
-    //         ROS_INFO("trajectory is loaded.");
-    //         uavTask = kMission;
-    //     }
-    //     else
-    //     {
-    //         break;
-    //     }
-
-    //     break;
-    // }
+        break;
+    }
 
     case LAND:
     {
-        printf("%s[main.cpp] Land command received! \n", KBLU);
+        printf("%s[main.cpp] Land command received! \n", KYEL);
         uav_task = kLand;
         // Mission timer will handle it for us
         printf("%s[main.cpp] UAV is landing! \n", KBLU);
@@ -358,53 +356,45 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         break;
     }
 
-    // case kMission:
-    // {
-    //     mavros_msgs::PositionTarget pos_sp;
-    //     ROS_INFO("Mission timer Doing mission!");
-    //     if (_points_id <= _traj_list.size() - 1)
-    //     {
-    //         std::cout << "Go to next ref: " << _points_id << std::endl;
-    //         std::cout << "Position: " << _traj_list[_points_id].pos.x << " " << _traj_list[_points_id].pos.y << " " << _traj_list[_points_id].pos.z << std::endl;
-    //         std::cout << "Velocity: " << _traj_list[_points_id].vel.x << " " << _traj_list[_points_id].vel.y << " " << _traj_list[_points_id].vel.z << std::endl;
-    //         std::cout << "Aceleration: " << _traj_list[_points_id].acc.x << " " << _traj_list[_points_id].acc.y << " " << _traj_list[_points_id].acc.z << std::endl;
-    //         pos_sp.position.x = _traj_list[_points_id].pos.x;
-    //         pos_sp.position.y = _traj_list[_points_id].pos.y;
-    //         pos_sp.position.z = _traj_list[_points_id].pos.z;
-    //         pos_sp.velocity.x = _traj_list[_points_id].vel.x;
-    //         pos_sp.velocity.y = _traj_list[_points_id].vel.y;
-    //         pos_sp.velocity.z = _traj_list[_points_id].vel.z;
-    //         pos_sp.acceleration_or_force.x = _traj_list[_points_id].acc.x;
-    //         pos_sp.acceleration_or_force.y = _traj_list[_points_id].acc.y;
-    //         pos_sp.acceleration_or_force.z = _traj_list[_points_id].acc.z;
-    //         //pos_sp.yaw = atan2(pos_sp.velocity.y, pos_sp.velocity.x); // yaw control
-    //         pos_sp.yaw = 0; //fixed yaw
+    case kMission:
+    {
+        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_interval)))
+        {
+            last_request_timer = ros::Time::now();
+            break;
+        }
+        // When in position control mode, send only waypoints
+        if (!_setpoint_raw_mode)
+        {
+            geometry_msgs::PoseStamped pos_sp;
+            pos_sp.pose.position.x = home.pose.position.x;
+            pos_sp.pose.position.y = home.pose.position.y;
+            pos_sp.pose.position.z = home.pose.position.z;
+            local_pos_pub.publish(pos_sp);
+        }
+        // Send to setpoint_raw, which gives more freedom to what settings to control
+        else
+        {
+            mavros_msgs::PositionTarget pos_sp;
+            pos_sp.position.x = home.pose.position.x;
+            pos_sp.position.y = home.pose.position.y;
+            pos_sp.position.z = home.pose.position.z;
+            pos_sp.velocity.x = 0;
+            pos_sp.velocity.y = 0;
+            pos_sp.velocity.z = _takeoff_velocity;
+            // For the type mask we have to ignore the rest (3520)
+            // 64	POSITION_TARGET_TYPEMASK_AX_IGNORE	Ignore acceleration x
+            // 128	POSITION_TARGET_TYPEMASK_AY_IGNORE	Ignore acceleration y
+            // 256	POSITION_TARGET_TYPEMASK_AZ_IGNORE	Ignore acceleration z
+            // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
+            // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
+            pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+            pos_sp.type_mask = 3520;
+            local_pos_raw_pub.publish(pos_sp);
+        }
+        break;
+    }
 
-    //         _points_id++;
-    //     }
-    //     else if (_points_id == _traj_list.size())
-    //     {
-    //         _points_id--;
-    //         std::cout << "Hold last ref: " << _points_id << std::endl;
-    //         std::cout << "Position: " << _traj_list[_points_id].pos.x << " " << _traj_list[_points_id].pos.y << " " << _traj_list[_points_id].pos.z << std::endl;
-    //         std::cout << "Velocity: " << _traj_list[_points_id].vel.x << " " << _traj_list[_points_id].vel.y << " " << _traj_list[_points_id].vel.z << std::endl;
-    //         std::cout << "Aceleration: " << _traj_list[_points_id].acc.x << " " << _traj_list[_points_id].acc.y << " " << _traj_list[_points_id].acc.z << std::endl;
-    //         pos_sp.position.x = _traj_list[_points_id].pos.x;
-    //         pos_sp.position.y = _traj_list[_points_id].pos.y;
-    //         pos_sp.position.z = _traj_list[_points_id].pos.z;
-    //         pos_sp.velocity.x = _traj_list[_points_id].vel.x;
-    //         pos_sp.velocity.y = _traj_list[_points_id].vel.y;
-    //         pos_sp.velocity.z = _traj_list[_points_id].vel.z;
-    //         pos_sp.acceleration_or_force.x = _traj_list[_points_id].acc.x;
-    //         pos_sp.acceleration_or_force.y = _traj_list[_points_id].acc.y;
-    //         pos_sp.acceleration_or_force.z = _traj_list[_points_id].acc.z;
-    //         _points_id++;
-    //     }
-
-    //     pos_sp.type_mask = 32768;
-    //     std::cout << "Yaw: " << pos_sp.yaw << std::endl;
-    //     Position_Setpoint_Pub.publish(pos_sp);
-    // }
     case kLand:
     {
         // Check if its at XY of home position, if not we send it to HOME then to land

@@ -117,6 +117,7 @@ private:
     double _takeoff_height;
     double _takeoff_velocity;
     double curr_roll, curr_pitch, curr_yaw;
+    double mission_start_time;
 
     int retry = 0;
     int uav_task;
