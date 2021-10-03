@@ -80,6 +80,7 @@ public:
         maxidx = ceil(waypoints.back().first/_interval);
         printf("%s[trajectory.h] With duration of %lf, interval size %lf, number of partitions %d \n", KGRN, duration, _interval, maxidx);
 
+        initialised = true;
         return true;
     }
 
@@ -91,9 +92,12 @@ public:
             return;
     }
 
+    MatrixXd returnTrajectory() {return _traj;};
+
     void clearTrajectory();
 
 private:
+    bool initialised;
     string _file_location;
     double _interval;
     MatrixXd _traj;

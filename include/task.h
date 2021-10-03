@@ -4,6 +4,7 @@
 #include <iostream>
 #include <ros/ros.h>
 #include <Eigen/Dense>
+#include <math.h>
 
 #include <geometry_msgs/PoseStamped.h>
 #include <mavros_msgs/CommandBool.h>
@@ -28,7 +29,8 @@ using namespace std;
 #define TAKEOFF 1
 #define HOVER 2
 #define MISSION 3
-#define LAND 4
+#define HOME 4
+#define LAND 5
 
 enum VehicleTask
 {
@@ -36,6 +38,7 @@ enum VehicleTask
     kTakeOff,
     kHover,
     kMission,
+    kHome,
     kLand
 };
 
@@ -59,6 +62,8 @@ public:
     {
         uav_gps_cur = *msg;
     }
+    
+    /** @brief Get current uav FCU state */
     void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg)
     {
         uav_current_state = *msg;
@@ -67,6 +72,13 @@ public:
             taskmaster::initialisation();
     }
 
+    /** @brief Get current uav velocity */
+    void uavVelCallback(const geometry_msgs::TwistStamped::ConstPtr &msg)
+    {
+        uav_vel = *msg;
+    }
+
+    /** @brief Get current uav pose */
     void uavPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     {
         uav_pose = *msg;
@@ -84,9 +96,11 @@ private:
     ros::Subscriber uav_gps_cur_sub;
     ros::Subscriber uav_gps_home_sub;
     ros::Subscriber uav_pose_sub;
+    ros::Subscriber uav_vel_sub;
     ros::Subscriber uav_cmd_sub;
 
     ros::Publisher local_pos_pub; 
+    ros::Publisher local_pos_raw_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
@@ -95,15 +109,19 @@ private:
 
     // Initialisation
     bool _initialised;
+    bool _setpoint_raw_mode;
+    bool takeoff_flag;
+    bool task_complete;
+
     double _interval;
     double _takeoff_height;
+    double _takeoff_velocity;
+    double curr_roll, curr_pitch, curr_yaw;
 
     int retry = 0;
     int uav_task;
     int uav_prev_task;
-    bool takeoff_flag;
-    bool task_complete;
-    double curr_roll, curr_pitch, curr_yaw;
+    
     std::string _wp_file_location;
 
     ros::Time last_request_timer;
@@ -116,6 +134,7 @@ private:
     sensor_msgs::NavSatFix uav_gps_cur;
     mavros_msgs::State uav_current_state;
     geometry_msgs::PoseStamped uav_pose;
+    geometry_msgs::TwistStamped uav_vel;
 
     geometry_msgs::PoseStamped home;
 

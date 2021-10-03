@@ -1,3 +1,5 @@
 trajectory_interval: 0.1
 takeoff_height: 5.0
+takeoff_velocity: 0.05
+setpoint_raw_mode: true
 wp_file_location: '/home/matthew/offb_ws/src/px4-path-planner/path/wp.csv'
