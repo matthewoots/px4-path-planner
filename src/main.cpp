@@ -23,9 +23,10 @@ int main(int argc, char **argv)
 taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 {
     // Interval
-    _nh.param("interval", _interval, 0.2);
-    printf("%s[main.cpp] taskmaster _interval = %lf \n", KBLU, _interval);
+    _nh.param("trajectory_interval", _interval, 0.2);
     _nh.param("takeoff_height", _takeoff_height, 1.2);
+
+    printf("%s[main.cpp] taskmaster _interval = %lf \n", KBLU, _interval);
     printf("%s[main.cpp] taskmaster _takeoff_height = %lf \n", KBLU, _takeoff_height);
 
     state_sub = _nh.subscribe<mavros_msgs::State>(
@@ -51,7 +52,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 
     mission_timer = _nh.createTimer(ros::Duration(0.05), &taskmaster::missionTimer, this, false, false);
 
-    printf("%s[main.cpp] taskmaster Setup Ready! \n", KBLU);
+    printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
 
 taskmaster::~taskmaster(){
@@ -101,11 +102,11 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         {
             printf("%s[main.cpp] Vehicle is not armed, please ask safety pilot to arm the vehicle [Attempt %d] \n", KRED, retry + 1);
             printf("%s[main.cpp] Overwrite and arm in %d \n", KRED, tries - (retry));
-            arm_cmd.request.value = true;
             retry++;
             break;
         }
         printf("%s[main.cpp] Takeoff command received! \n", KBLU);
+        arm_cmd.request.value = true;
         uav_task = kTakeOff;
 
         if (set_offboard())
@@ -199,13 +200,13 @@ bool taskmaster::set_offboard()
                 printf("%s[main.cpp] Try arm \n", KYEL);
                 if (arming_client.call(arm_cmd) && arm_cmd.response.success)
                 {
-                    printf("%s[main.cpp] Vehicle armed \n", KGRN);
-                    is_mode_ready = (uav_current_state.mode == "OFFBOARD");
+                    printf("%s[main.cpp] Vehicle armed \n", KGRN);  
                 }
                 last_request = ros::Time::now();
             }
         }
         local_pos_pub.publish(home);
+        is_mode_ready = (uav_current_state.mode == "OFFBOARD") && uav_current_state.armed;
         ros::spinOnce();
         rate.sleep();
     }
