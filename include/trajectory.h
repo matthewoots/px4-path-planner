@@ -8,7 +8,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <tf/tf.h>
 
-#include <spline/helpers/effector_spline.h>
+#include <spline.h>
 #include <csv.h>
 
 #define KNRM  "\033[0m"
@@ -22,12 +22,9 @@
 
 using namespace Eigen;
 using namespace std;
-// loading helper class namespace
-using namespace spline::helpers;
+
 typedef std::pair<double, Eigen::Vector3d> Waypoint;
-// typedef std::pair<double, double> Waypoint_1d;
 typedef std::vector<Waypoint> T_Waypoint;
-// typedef std::vector<Waypoint_1d> t_Waypoint;
 
 class trajectory
 {
@@ -40,7 +37,7 @@ public:
         _file_location = file_location;
         _interval = interval;
         T_Waypoint waypoints;
-        t_Waypoint waypoints_tmp;
+        std::vector<double> t; std::vector<double> x; std::vector<double> y; std::vector<double> z;
         printf("%s[trajectory.h] Trying to open %s \n", KYEL, _file_location.c_str());
         ifstream file(_file_location);
         
@@ -60,19 +57,18 @@ public:
             rowcount ++;
             printf("%s  [trajectory.h] Row[%d] %.3lf, %.3lf, %.3lf, %.3lf \n", KBLU, rowcount, time, xpos, ypos, zpos);
             // Create waypoints
-            waypoints.push_back(std::make_pair(time, Eigen::Vector3d(xpos,ypos,zpos)));
-            // waypoints_tmp.push_back(std::make_pair(time, xpos));
+            t.push_back(time); // must be increasing 
+            x.push_back(xpos); y.push_back(ypos); z.push_back(zpos);
         }            
-        duration = waypoints.back().first;
-
-        exact_cubic_t* eff_traj = spline::helpers::effector_spline(waypoints.begin(),waypoints.end());
+        duration = t.back();
+        tk::spline sx(t,x); tk::spline sy(t,y); tk::spline sz(t,z);
         double testing_time = 0.91;
 
         // evaluate spline print
         printf("%s[trajectory.h] Example trajectory at %lf %lf %lf \n", KGRN, 
-            (*eff_traj)(testing_time)[0],
-            (*eff_traj)(testing_time)[1],
-            (*eff_traj)(testing_time)[2]);
+            sx(testing_time),
+            sy(testing_time),
+            sz(testing_time));
 
         MatrixXd m(3,5);
         m.resize(3,2);
@@ -85,7 +81,7 @@ public:
         printf("%s[trajectory.h] Testing Eigen MatrixXd resizing, size (%ld,%ld) with %ld elements\n", KYEL, m.rows() ,m.cols(), m.size());
 
         // Start to populate spline trajectory about the desired interval
-        maxidx = ceil(waypoints.back().first/_interval)+1;
+        maxidx = ceil(duration/_interval)+1;
         printf("%s[trajectory.h] With duration of %lf, interval size %lf, number of partitions %d \n", KGRN, duration, _interval, maxidx);
 
         _traj.resize(4,maxidx);
@@ -95,11 +91,11 @@ public:
             // time
             _traj(0,i) = i * _interval;
             // x position
-            _traj(1,i) = (*eff_traj)(i * _interval)[0];
+            _traj(1,i) = sx(i * _interval);
             //y position
-            _traj(2,i) = (*eff_traj)(i * _interval)[1];
+            _traj(2,i) = sy(i * _interval);
             //z position
-            _traj(3,i) = (*eff_traj)(i * _interval)[2];
+            _traj(3,i) = sz(i * _interval);
             // evaluate spline print
             printf("%s  [trajectory.h] [%.2lf] [%.2lf %.2lf %.2lf] \n", KGRN, 
                 _traj(0,i),
@@ -114,11 +110,25 @@ public:
 
     MatrixXd returnTrajectory() {return _traj;}
 
-    // Vector3d returnDesiredPos() 
-    // {
-    //     Vector3d desired_pos = 
-    //     return _traj;
-    // }
+    Vector3d returnDesiredPos(double milli_time) 
+    {
+        double time_sec = 0.0;
+        int idx = 0;
+        Vector3d desired_pos;
+        for (int i=0; i<maxidx; i++)
+        {
+            if (milli_time/1000 >= _traj(0,i))
+            {
+                time_sec = _traj(0,i);
+                idx = i;
+                break;
+            }
+        }
+        desired_pos.x() = _traj(1,idx);
+        desired_pos.y() = _traj(2,idx);
+        desired_pos.z() = _traj(3,idx);
+        return desired_pos;
+    }
 
     void clearTrajectory();
 
