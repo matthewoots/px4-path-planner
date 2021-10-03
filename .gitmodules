@@ -1,3 +1,0 @@
-[submodule "external/hpp-spline"]
-	path = external/hpp-spline
-	url = https://github.com/humanoid-path-planner/hpp-spline.git

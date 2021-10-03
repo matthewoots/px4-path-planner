@@ -23,11 +23,13 @@ int main(int argc, char **argv)
 taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 {
     // Interval
-    _nh.param("trajectory_interval", _interval, 0.2);
-    _nh.param("takeoff_height", _takeoff_height, 1.2);
+    _nh.param<double>("trajectory_interval", _interval, 0.2);
+    _nh.param<double>("takeoff_height", _takeoff_height, 1.2);
+    _nh.param<std::string>("wp_file_location", _wp_file_location, "~/wp.csv");
 
     printf("%s[main.cpp] taskmaster _interval = %lf \n", KBLU, _interval);
     printf("%s[main.cpp] taskmaster _takeoff_height = %lf \n", KBLU, _takeoff_height);
+    printf("%s[main.cpp] taskmaster _wp_file_location = %s \n", KBLU, _wp_file_location.c_str());
 
     state_sub = _nh.subscribe<mavros_msgs::State>(
         "/mavros/state", 10, boost::bind(&taskmaster::uavStateCallBack, this, _1));
@@ -62,6 +64,9 @@ void taskmaster::initialisation()
 {
     ros::Rate rate(20.0);
     ros::Time last_request = ros::Time::now();
+
+    traj.start(_wp_file_location,_interval);
+
     // Make Sure FCU is connected, wait for 5s if not connected.
     printf("%s[main.cpp] FCU Connection is %s \n", uav_current_state.connected? KBLU : KRED, uav_current_state.connected? "up" : "down");
     while (ros::ok() && !uav_current_state.connected)
@@ -78,7 +83,7 @@ void taskmaster::initialisation()
     }
     printf("%s[main.cpp] FCU connected! \n", KBLU);
     _initialised = true;
-
+    
     // Set Takeoff Position
     takeoff_pos.x() = uav_pose.pose.position.x;
     takeoff_pos.y() = uav_pose.pose.position.y;

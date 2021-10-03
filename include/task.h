@@ -19,6 +19,8 @@
 
 #include <tf/tf.h>
 
+#include <trajectory.h>
+
 using namespace Eigen;
 using namespace std;
 
@@ -43,14 +45,8 @@ public:
     taskmaster(ros::NodeHandle &nodeHandle);
     ~taskmaster();
 
-    bool loadTrajectory();
-    void clearTrajectory();
-    void pubTrajectory();    
-
     bool set_offboard();
     void initialisation();
-    
-    void land();
 
     void missionTimer(const ros::TimerEvent &);
 
@@ -108,6 +104,7 @@ private:
     bool takeoff_flag;
     bool task_complete;
     double curr_roll, curr_pitch, curr_yaw;
+    std::string _wp_file_location;
 
     ros::Time last_request_timer;
 
@@ -121,4 +118,6 @@ private:
     geometry_msgs::PoseStamped uav_pose;
 
     geometry_msgs::PoseStamped home;
+
+    trajectory traj;
 };
