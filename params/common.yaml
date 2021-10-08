@@ -1,3 +1,6 @@
+debug: true
+control_points_interval: 0.1
+unique_id_range: 100
 trajectory_interval: 0.1
 takeoff_height: 5.0
 takeoff_velocity: 0.05

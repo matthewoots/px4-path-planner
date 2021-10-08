@@ -37,17 +37,26 @@ int main(int argc, char **argv)
 taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 {
     // Interval
-    _nh.param<double>("trajectory_interval", _interval, 0.2);
+    _nh.param<bool>("debug", _debug, false);
+    _nh.param<bool>("setpoint_raw_mode", _setpoint_raw_mode, true);
+    _nh.param<int>("unique_id_range", _unique_id_range, 10);
+    _nh.param<double>("send_desired_interval", _send_desired_interval, 0.1);
+    _nh.param<double>("control_points_interval", _control_points_interval, 0.1);
+    _nh.param<double>("trajectory_calc_interval", _trajectory_calc_interval, 1.5);
     _nh.param<double>("takeoff_height", _takeoff_height, 1.2);
     _nh.param<double>("takeoff_velocity", _takeoff_velocity, 1.0);
     _nh.param<std::string>("wp_file_location", _wp_file_location, "~/wp.csv");
-    _nh.param<bool>("setpoint_raw_mode", _setpoint_raw_mode, true);
 
-    printf("%s[main.cpp] Parameter (_interval = %lf) \n", KBLU, _interval);
+    printf("%s[main.cpp] Parameter (_debug = %s) \n", KBLU, _debug ? "true" : "false");
+    printf("%s[main.cpp] Parameter (_setpoint_raw_mode = %s) \n", KBLU, _setpoint_raw_mode ? "true" : "false");
+    printf("%s[main.cpp] Parameter (_unique_id_range = %d) \n", KBLU, _unique_id_range);
+    printf("%s[main.cpp] Parameter (_send_desired_interval = %lf) \n", KBLU, _send_desired_interval);
+    printf("%s[main.cpp] Parameter (_control_points_interval = %lf) \n", KBLU, _control_points_interval);
+    printf("%s[main.cpp] Parameter (_trajectory_calc_interval = %lf) \n", KBLU, _trajectory_calc_interval);
     printf("%s[main.cpp] Parameter (_takeoff_height = %lf) \n", KBLU, _takeoff_height);
     printf("%s[main.cpp] Parameter (_takeoff_velocity = %lf) \n", KBLU, _takeoff_velocity);
     printf("%s[main.cpp] Parameter (_wp_file_location = %s) \n", KBLU, _wp_file_location.c_str());
-    printf("%s[main.cpp] Parameter (_wp_file_location = %s) \n", KBLU, _setpoint_raw_mode ? "true" : "false");
+    
 
     state_sub = _nh.subscribe<mavros_msgs::State>(
         "/mavros/state", 10, boost::bind(&taskmaster::uavStateCallBack, this, _1));
@@ -56,7 +65,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         "/mavros/local_position/pose", 1, &taskmaster::uavPoseCallback, this);
     // Get current uav velocity
     uav_vel_sub = _nh.subscribe<geometry_msgs::TwistStamped>(
-        "/mavros/local_position/velocity", 1, &taskmaster::uavVelCallback, this);
+        "/mavros/local_position/velocity_local", 1, &taskmaster::uavVelCallback, this);
     uav_gps_cur_sub = _nh.subscribe<sensor_msgs::NavSatFix>(
         "/mavros/global_position/global", 1, &taskmaster::gpsCurrentCallback, this);
     uav_gps_home_sub = _nh.subscribe<mavros_msgs::HomePosition>(
@@ -89,9 +98,6 @@ void taskmaster::initialisation()
     ros::Rate rate(20.0);
     ros::Time last_request = ros::Time::now();
 
-    // Testing and debug purposes concerning the trajectory node
-    traj.setTrajectory(_wp_file_location,_interval);
-
     // Make Sure FCU is connected, wait for 5s if not connected.
     printf("%s[main.cpp] FCU Connection is %s \n", uav_current_state.connected? KBLU : KRED, uav_current_state.connected? "up" : "down");
     while (ros::ok() && !uav_current_state.connected)
@@ -106,6 +112,15 @@ void taskmaster::initialisation()
             return;
         }
     }
+
+    // Testing and debug purposes concerning the trajectory node
+    if (_debug && !_vel_initialised)
+    {
+        traj.setTrajectory(_wp_file_location, _send_desired_interval, _control_points_interval,
+            current_vel, Vector3d (0.0, 0.0, 0.0));
+        _vel_initialised = true;
+    }
+
     printf("%s[main.cpp] FCU connected! \n", KBLU);
     _initialised = true;
     
@@ -158,13 +173,17 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
         printf("%s[main.cpp] Mission command received! \n", KYEL);
         printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
-        if (!traj.setTrajectory(_wp_file_location,_interval))
+
+        // initial trajectory
+        if (!traj.setTrajectory(_wp_file_location, _send_desired_interval, _control_points_interval,
+            current_vel, Vector3d (0.0, 0.0, 0.0)))
         {
             printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
             break;
         }
         uav_task = kMission;
-        mission_start_time = ros::Time::now().toNSec();
+        mission_start_time = ros::Time::now().toSec();
+        prev_traj_replan = ros::Time::now().toSec();
 
         break;
     }
@@ -268,42 +287,11 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                 printf("%s[main.cpp] Current Altitude is: %lf/%lf \n", KBLU, uav_pose.pose.position.z, takeoff_pos.z());
                 printf("%s[main.cpp] Takeoff Complete \n", KGRN);
                 task_complete = true;
+                last_mission_pos = current_pos;
                 uav_task = kHover;
             }
         }
-        
-        // When in position control mode, send only waypoints
-        if (!_setpoint_raw_mode)
-        {
-            geometry_msgs::PoseStamped pos_sp;
-            pos_sp.pose.position.x = takeoff_pos.x();
-            pos_sp.pose.position.y = takeoff_pos.y();
-            pos_sp.pose.position.z = takeoff_pos.z();
-            local_pos_pub.publish(pos_sp);
-        }
-        // Send to setpoint_raw, which gives more freedom to what settings to control
-        else
-        {
-            mavros_msgs::PositionTarget pos_sp;
-            pos_sp.position.x = takeoff_pos.x();
-            pos_sp.position.y = takeoff_pos.y();
-            pos_sp.position.z = takeoff_pos.z();
-            pos_sp.velocity.x = 0;
-            pos_sp.velocity.y = 0;
-            pos_sp.velocity.z = _takeoff_velocity;
-            // For the type mask we have to ignore the rest (3520)
-            // 64	POSITION_TARGET_TYPEMASK_AX_IGNORE	Ignore acceleration x
-            // 128	POSITION_TARGET_TYPEMASK_AY_IGNORE	Ignore acceleration y
-            // 256	POSITION_TARGET_TYPEMASK_AZ_IGNORE	Ignore acceleration z
-            // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
-            // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
-            pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            pos_sp.type_mask = 3520;
-            local_pos_raw_pub.publish(pos_sp);
-        }
-
-        
-        // pos_sp.type_mask = 3576;
+        uavDesiredControlHandler(takeoff_pos, Vector3d (0,0,_takeoff_velocity));
         
         break;
     }
@@ -313,41 +301,16 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         {
             last_request_timer = ros::Time::now();
  
-            printf("%s[main.cpp] Hovering at pos using ENU (%.2lf, %.2lf, %.2lf) \n", KBLU, 
+            printf("%s[main.cpp] Hovering @ ENU pos (%.2lf, %.2lf, %.2lf) last_mission_pos (%.2lf, %.2lf, %.2lf) \n", KBLU, 
                 uav_pose.pose.position.x, 
                 uav_pose.pose.position.y,
-                uav_pose.pose.position.z);
+                uav_pose.pose.position.z,
+                last_mission_pos.x(),
+                last_mission_pos.y(),
+                last_mission_pos.z());
         }
+        uavDesiredControlHandler(last_mission_pos, Vector3d (0,0,0));
 
-        // When in position control mode, send only waypoints
-        if (!_setpoint_raw_mode)
-        {
-            geometry_msgs::PoseStamped pos_sp;
-            pos_sp.pose.position.x = uav_pose.pose.position.x;
-            pos_sp.pose.position.y = uav_pose.pose.position.y;
-            pos_sp.pose.position.z = uav_pose.pose.position.z;
-            local_pos_pub.publish(pos_sp);
-        }
-        // Send to setpoint_raw, which gives more freedom to what settings to control
-        else
-        {
-            mavros_msgs::PositionTarget pos_sp;
-            pos_sp.position.x = uav_pose.pose.position.x;
-            pos_sp.position.y = uav_pose.pose.position.y;
-            pos_sp.position.z = uav_pose.pose.position.z;
-            pos_sp.velocity.x = 0;
-            pos_sp.velocity.y = 0;
-            pos_sp.velocity.z = 0;
-            // For the type mask we have to ignore the rest (3520)
-            // 64	POSITION_TARGET_TYPEMASK_AX_IGNORE	Ignore acceleration x
-            // 128	POSITION_TARGET_TYPEMASK_AY_IGNORE	Ignore acceleration y
-            // 256	POSITION_TARGET_TYPEMASK_AZ_IGNORE	Ignore acceleration z
-            // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
-            // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
-            pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            pos_sp.type_mask = 3520;
-            local_pos_raw_pub.publish(pos_sp);
-        }
         break;
     }
 
@@ -358,40 +321,34 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 
     case kMission:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_interval)))
+        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_send_desired_interval)))
         {
             last_request_timer = ros::Time::now();
             break;
         }
-        // When in position control mode, send only waypoints
-        if (!_setpoint_raw_mode)
+
+        /** @brief recalculate trajectory during mission **/
+        // if (ros::Time::now().toSec() - prev_traj_replan > _trajectory_calc_interval)
+        // {
+        //     printf("%s[main.cpp] Recalculating trajectory! \n", KGRN);
+        //     traj.recalculateTrajectory(current_pos, current_vel, Vector3d (0,0,0),
+        //         ros::Time::now().toSec() - prev_traj_replan);
+        //     prev_traj_replan = ros::Time::now().toSec();
+        //     break;
+        // }
+
+        traj.calcDesired(ros::Time::now().toSec() - prev_traj_replan);
+        if (traj.isCompleted())
         {
-            geometry_msgs::PoseStamped pos_sp;
-            pos_sp.pose.position.x = home.pose.position.x;
-            pos_sp.pose.position.y = home.pose.position.y;
-            pos_sp.pose.position.z = home.pose.position.z;
-            local_pos_pub.publish(pos_sp);
+            printf("%s[main.cpp] Mission Complete \n", KGRN);
+            task_complete = true;
+            last_mission_pos = traj.returnPose();
+            uav_task = kHover;
         }
-        // Send to setpoint_raw, which gives more freedom to what settings to control
-        else
-        {
-            mavros_msgs::PositionTarget pos_sp;
-            pos_sp.position.x = home.pose.position.x;
-            pos_sp.position.y = home.pose.position.y;
-            pos_sp.position.z = home.pose.position.z;
-            pos_sp.velocity.x = 0;
-            pos_sp.velocity.y = 0;
-            pos_sp.velocity.z = _takeoff_velocity;
-            // For the type mask we have to ignore the rest (3520)
-            // 64	POSITION_TARGET_TYPEMASK_AX_IGNORE	Ignore acceleration x
-            // 128	POSITION_TARGET_TYPEMASK_AY_IGNORE	Ignore acceleration y
-            // 256	POSITION_TARGET_TYPEMASK_AZ_IGNORE	Ignore acceleration z
-            // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
-            // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
-            pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            pos_sp.type_mask = 3520;
-            local_pos_raw_pub.publish(pos_sp);
-        }
+        
+        // Get the desired pose from the trajectory handler
+        uavDesiredControlHandler(traj.returnPose(), traj.returnVel());
+        
         break;
     }
 
@@ -424,36 +381,8 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                 } 
             }
         }
-
-        // When in position control mode, send only waypoints
-        if (!_setpoint_raw_mode)
-        {
-            geometry_msgs::PoseStamped pos_sp;
-            pos_sp.pose.position.x = home.pose.position.x;
-            pos_sp.pose.position.y = home.pose.position.y;
-            pos_sp.pose.position.z = home.pose.position.z;
-            local_pos_pub.publish(pos_sp);
-        }
-        // Send to setpoint_raw, which gives more freedom to what settings to control
-        else
-        {
-            mavros_msgs::PositionTarget pos_sp;
-            pos_sp.position.x = home.pose.position.x;
-            pos_sp.position.y = home.pose.position.y;
-            pos_sp.position.z = home.pose.position.z;
-            pos_sp.velocity.x = 0;
-            pos_sp.velocity.y = 0;
-            pos_sp.velocity.z = _takeoff_velocity;
-            // For the type mask we have to ignore the rest (3520)
-            // 64	POSITION_TARGET_TYPEMASK_AX_IGNORE	Ignore acceleration x
-            // 128	POSITION_TARGET_TYPEMASK_AY_IGNORE	Ignore acceleration y
-            // 256	POSITION_TARGET_TYPEMASK_AZ_IGNORE	Ignore acceleration z
-            // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
-            // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
-            pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            pos_sp.type_mask = 3520;
-            local_pos_raw_pub.publish(pos_sp);
-        }
+        uavDesiredControlHandler(Vector3d (home.pose.position.x,home.pose.position.y,home.pose.position.z), 
+            Vector3d (0,0,0));
 
         /** @brief Currently switching to AUTO.LAND does not work so we will use offboard **/
         // ros::Rate rate(20.0);
@@ -480,7 +409,6 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         //     ros::spinOnce();
         //     rate.sleep();
         // }
-
         
         break;
     }
