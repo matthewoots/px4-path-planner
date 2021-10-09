@@ -160,7 +160,7 @@ private:
     double _control_points_interval;
     double _trajectory_calc_interval;
     double _takeoff_height;
-    double _takeoff_velocity;
+    double _common_max_vel;
     double curr_roll, curr_pitch, curr_yaw;
     /** @brief Used for mission timer, when to replan the trajectory */ 
     double mission_start_time;

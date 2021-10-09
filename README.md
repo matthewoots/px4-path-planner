@@ -7,6 +7,7 @@ Offboard/Onboard development for PX4 Autopilot with
 5. Using `v1.12.3` of PX4-Autopilot, run with `make px4_sitl gazebo HEADLESS=1`
 6. Launch with `roslaunch px4_path_planner main.launch`
 
+- `full_test_trajectory.ulg` has the full log for a test trajectory. This includes `takeoff`, `mission`, `home` and `landing`, which all uses the **spline** trajectory and it seems quite promising. To test `home` function, `wp_away_from_home.csv` is used.
 
 ## Notes
 1. Example of a csv file format in text that can be found in `path/wp.csv`.
