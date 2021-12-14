@@ -4,6 +4,7 @@
     <group ns="$(arg id)">
 	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
 		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 		<remap from="/mavros/global_position/global" to="$(arg id)/mavros/global_position/global"/>
 		<remap from="/mavros/home_position/home" to="$(arg id)/mavros/home_position/home"/>
 		<remap from="/mavros/local_position/pose" to="$(arg id)/mavros/local_position/pose"/>

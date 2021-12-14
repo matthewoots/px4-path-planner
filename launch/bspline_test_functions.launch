@@ -1,0 +1,5 @@
+<launch>
+	<node pkg="px4_path_planner" type="px4_path_planner_bspline_test_functions" name="bspline" output="screen">
+    </node>
+
+</launch>

@@ -58,6 +58,14 @@ add_executable(${PROJECT_NAME}_node
 src/main.cpp 
 )
 
+add_executable(${PROJECT_NAME}_bspline_test 
+src/bspline_test.cpp 
+)
+
+add_executable(${PROJECT_NAME}_bspline_test_functions
+src/bspline_test_functions.cpp 
+)
+
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -70,5 +78,13 @@ src/main.cpp
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(${PROJECT_NAME}_bspline_test 
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(${PROJECT_NAME}_bspline_test_functions 
   ${catkin_LIBRARIES}
 )

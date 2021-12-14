@@ -50,8 +50,9 @@
             <arg name="tgt_component" value="1"/>
         </include>
 	<!-- PATH PLANNER -->
-	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner1" output="screen">
+	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner0" output="screen">
 		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 		<remap from="/mavros/global_position/global" to="$(arg xid)/mavros/global_position/global"/>
 		<remap from="/mavros/home_position/home" to="$(arg xid)/mavros/home_position/home"/>
 		<remap from="/mavros/local_position/pose" to="$(arg xid)/mavros/local_position/pose"/>
@@ -94,8 +95,9 @@
             <arg name="tgt_component" value="1"/>
         </include>
 	<!-- PATH PLANNER -->
-	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner2" output="screen">
+	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner1" output="screen">
 		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp1.csv"/>
 		<remap from="/mavros/global_position/global" to="$(arg xid)/mavros/global_position/global"/>
 		<remap from="/mavros/home_position/home" to="$(arg xid)/mavros/home_position/home"/>
 		<remap from="/mavros/local_position/pose" to="$(arg xid)/mavros/local_position/pose"/>
@@ -138,8 +140,9 @@
             <arg name="tgt_component" value="1"/>
         </include>
 	<!-- PATH PLANNER -->
-	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner3" output="screen">
+	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner2" output="screen">
 		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp2.csv"/>
 		<remap from="/mavros/global_position/global" to="$(arg xid)/mavros/global_position/global"/>
 		<remap from="/mavros/home_position/home" to="$(arg xid)/mavros/home_position/home"/>
 		<remap from="/mavros/local_position/pose" to="$(arg xid)/mavros/local_position/pose"/>
