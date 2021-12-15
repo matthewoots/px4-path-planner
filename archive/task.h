@@ -21,6 +21,7 @@
 #include <tf/tf.h>
 
 #include <trajectory.h>
+#include <bspline.h>
 
 using namespace Eigen;
 using namespace std;

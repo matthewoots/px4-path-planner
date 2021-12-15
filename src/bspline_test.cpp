@@ -25,8 +25,6 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
     
     int order = 3;
-    // Row is like number of waypoints
-    int row = 5; 
     int wp_count = 2;
     int range = 4;
     int knotdiv = 4;
