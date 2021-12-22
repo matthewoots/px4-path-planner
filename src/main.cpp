@@ -27,8 +27,7 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "px4_path_planner");
     ros::NodeHandle nh("~");
-    //the setpoint publishing rate MUST be faster than 2Hz
-    ros::Rate rate(20.0);
+    // The setpoint publishing rate MUST be faster than 2Hz
     taskmaster taskmaster(nh);
     ros::spin();
     return 0;
@@ -37,24 +36,24 @@ int main(int argc, char **argv)
 taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 {
     // Interval
-    _nh.param<bool>("debug", _debug, false);
-    _nh.param<bool>("setpoint_raw_mode", _setpoint_raw_mode, true);
+    _nh.param<int>("spline_order", _order, 3);
     _nh.param<int>("unique_id_range", _unique_id_range, 10);
-    _nh.param<double>("send_desired_interval", _send_desired_interval, 0.1);
-    _nh.param<double>("control_points_interval", _control_points_interval, 0.1);
-    _nh.param<double>("trajectory_calc_interval", _trajectory_calc_interval, 1.5);
-    _nh.param<double>("takeoff_height", _takeoff_height, 1.2);
+    _nh.param<int>("control_points_division", _control_points_division, 1);
+    _nh.param<bool>("setpoint_raw_mode", _setpoint_raw_mode, true);
+    _nh.param<double>("trajectory_pub_rate", _trajectory_pub_rate, 1.0);_nh.param<double>("common_min_vel", _common_min_vel, 0.1);
+    _nh.param<double>("takeoff_height", _takeoff_height, 1.0);
     _nh.param<double>("common_max_vel", _common_max_vel, 1.0);
     _nh.param<std::string>("wp_file_location", _wp_file_location, "~/wp.csv");
+    _send_desired_interval = 1 / _trajectory_pub_rate;
 
-    printf("%s[main.cpp] Parameter (_debug = %s) \n", KBLU, _debug ? "true" : "false");
     printf("%s[main.cpp] Parameter (_setpoint_raw_mode = %s) \n", KBLU, _setpoint_raw_mode ? "true" : "false");
+    printf("%s[main.cpp] Parameter (_spline_order = %d) \n", KBLU, _order);
     printf("%s[main.cpp] Parameter (_unique_id_range = %d) \n", KBLU, _unique_id_range);
     printf("%s[main.cpp] Parameter (_send_desired_interval = %lf) \n", KBLU, _send_desired_interval);
-    printf("%s[main.cpp] Parameter (_control_points_interval = %lf) \n", KBLU, _control_points_interval);
-    printf("%s[main.cpp] Parameter (_trajectory_calc_interval = %lf) \n", KBLU, _trajectory_calc_interval);
+    printf("%s[main.cpp] Parameter (_control_points_division = %d) \n", KBLU, _control_points_division);
     printf("%s[main.cpp] Parameter (_takeoff_height = %lf) \n", KBLU, _takeoff_height);
     printf("%s[main.cpp] Parameter (_common_max_vel = %lf) \n", KBLU, _common_max_vel);
+    printf("%s[main.cpp] Parameter (_common_min_vel = %lf) \n", KBLU, _common_min_vel);
     printf("%s[main.cpp] Parameter (_wp_file_location = %s) \n", KBLU, _wp_file_location.c_str());
     
     /** 
@@ -118,7 +117,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     /** 
     * @brief Mission Timer that handles output and publishing of setpoints to PX4
     */
-    mission_timer = _nh.createTimer(ros::Duration(0.05), &taskmaster::missionTimer, this, false, false);
+    mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::missionTimer, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
@@ -146,14 +145,6 @@ void taskmaster::initialisation()
         }
     }
 
-    // Testing and debug purposes concerning the trajectory node
-    if (_debug && !_vel_initialised)
-    {
-        traj.setTrajectory(_wp_file_location, _send_desired_interval, _control_points_interval,
-            current_vel, Vector3d (0.0, 0.0, 0.0));
-        _vel_initialised = true;
-    }
-
     printf("%s[main.cpp] FCU connected! \n", KBLU);
     _initialised = true;
     
@@ -161,9 +152,6 @@ void taskmaster::initialisation()
     takeoff_pos.x() = uav_pose.pose.position.x;
     takeoff_pos.y() = uav_pose.pose.position.y;
     takeoff_pos.z() = uav_pose.pose.position.z + _takeoff_height;
-
-    // Trajectory debug mode
-    traj.debug_mode(_debug);
 
     return;
 }
@@ -188,7 +176,6 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
         printf("%s[main.cpp] Takeoff command received! \n", KYEL);
         arm_cmd.request.value = true;
-        uav_task = kTakeOff;
 
         if (set_offboard())
         {
@@ -197,9 +184,34 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
             printf("%s[main.cpp] Mission timer started! \n", KGRN);
             takeoff_flag = true;
         }
+        /** @brief Set up Takeoff Waypoints */
+        wp = MatrixXd::Zero(3,1);
+        wp.col(0) = takeoff_pos;
+        std::cout << KBLU << "[main.cpp] " << "[Takeoff Waypoint] " << std::endl << KNRM << wp << std::endl;
 
-        traj.setSimpleTrajectory(Vector3d (home.pose.position.x, home.pose.position.y, home.pose.position.z),
-            takeoff_pos, _send_desired_interval, _common_max_vel);
+        double clean_buffer = ros::Time::now().toSec();
+
+        // while loop to clean out buffer for command for 10s
+        while (abs(clean_buffer - ros::Time::now().toSec()) < 10.0)
+        {
+            Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
+            uavDesiredControlHandler(home_pose, Vector3d (0,0,0));
+            // std::cout << KBLU << "[main.cpp] Publish buffer" << KNRM << home_pose << std::endl;
+        }
+
+        Vector3d start_pose = {uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z};
+
+        traj.Initialise(_order, _control_points_division, _trajectory_pub_rate);
+        traj.SetClampedPath(wp, _common_min_vel, start_pose); 
+        if (!traj.UpdateFullPath())
+        {
+            // Reject Takeoff
+            printf("%s[main.cpp] REJECT [TAKEOFF], SET PATH FAIL \n", KRED);
+            uav_task = kIdle;
+            break;
+        }
+
+        uav_task = kTakeOff;
         prev_traj_replan = ros::Time::now().toSec();
         break;
     }
@@ -214,13 +226,26 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         printf("%s[main.cpp] Mission command received! \n", KYEL);
         printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
 
-        // initial trajectory
-        if (!traj.setTrajectory(_wp_file_location, _send_desired_interval, _control_points_interval,
-            current_vel, Vector3d (0.0, 0.0, 0.0)))
+        MatrixXd wp;
+        if (!UnpackWaypoint(&wp, _wp_file_location))
         {
             printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
+            uav_task = kHover;
             break;
         }
+        Vector3d start_pose = {uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z};
+        std::cout << KBLU << "[main.cpp] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
+
+        traj.Initialise(_order, _control_points_division, _trajectory_pub_rate);
+        traj.SetClampedPath(wp, _common_max_vel, start_pose); 
+        if (!traj.UpdateFullPath())
+        {
+            // Reject Mission
+            printf("%s[main.cpp] REJECT [MISSION], SET PATH FAIL \n", KRED);
+            uav_task = kHover;
+            break;
+        }
+
         uav_task = kMission;
         mission_start_time = ros::Time::now().toSec();
         prev_traj_replan = ros::Time::now().toSec();
@@ -237,7 +262,23 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
         printf("%s[main.cpp] Home command received! \n", KYEL);
         printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
-        traj.setSimpleTrajectory(current_pos, takeoff_pos, _send_desired_interval, _common_max_vel);
+        
+        /** @brief Set up Home Waypoints */
+        wp = MatrixXd::Zero(3,1);
+        wp.col(0) = takeoff_pos;
+        Vector3d start_pose = {uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z};
+        std::cout << KBLU << "[main.cpp] " << "[Home Waypoint] " << std::endl << KNRM << wp << std::endl;
+
+        traj.Initialise(_order, _control_points_division, _trajectory_pub_rate);
+        traj.SetClampedPath(wp, _common_max_vel, start_pose); 
+        if (!traj.UpdateFullPath())
+        {
+            // Reject Home
+            printf("%s[main.cpp] REJECT [HOME], SET PATH FAIL \n", KRED);
+            uav_task = kHover;
+            break;
+        }
+        
         uav_task = kHome;
         prev_traj_replan = ros::Time::now().toSec();
         break;
@@ -262,13 +303,28 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
         printf("%s[main.cpp] Land command received! \n", KYEL);
         printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
-        traj.setSimpleTrajectory(current_pos, Vector3d (home.pose.position.x, home.pose.position.y, home.pose.position.z),
-             _send_desired_interval, _common_max_vel);
+
+        /** @brief Set up Land Waypoints */
+        wp = MatrixXd::Zero(3,1);
+        Vector3d _home = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
+        wp.col(0) = _home;
+        Vector3d start_pose = {uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z};
+        std::cout << KBLU << "[main.cpp] " << "[Land Waypoint] " << std::endl << KNRM << wp << std::endl;
+
+        traj.Initialise(_order, _control_points_division, _trajectory_pub_rate);
+        traj.SetClampedPath(wp, _common_min_vel, start_pose); 
+        if (!traj.UpdateFullPath())
+        {
+            // Reject Land
+            printf("%s[main.cpp] REJECT [HOME], SET PATH FAIL \n", KRED);
+            uav_task = kHover;
+            break;
+        }
+        
         uav_task = kLand;
         prev_traj_replan = ros::Time::now().toSec();
         // Mission timer will handle it for us
         printf("%s[main.cpp] UAV is landing! \n", KBLU);
-
         break;
     }
 
@@ -344,9 +400,9 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 {
     if (uav_task != uav_prev_task)
     {
-        printf("%s[main.cpp] Starting New Task %d! \n", KBLU, uav_task);
         task_complete = false;
-        last_request_timer = ros::Time::now();
+        last_request_timer = traj.GetStartTime();
+        printf("%s[main.cpp] Starting New Task %d @ time(%lf)! \n", KBLU, uav_task, last_request_timer);
         uav_prev_task = uav_task;
     }
 
@@ -354,35 +410,46 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
     {
     case kTakeOff:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_send_desired_interval)))
+        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > _send_desired_interval))
         {
-            last_request_timer = ros::Time::now();
-            // traj is complete is better that (abs(uav_pose.pose.position.z - takeoff_pos.z()) < 0.2)
-            if (traj.isCompleted())
+            std::cout << KYEL << "[main.cpp] traj_sync " << KNRM << (ros::Time::now().toSec() - last_request_timer) - (_send_desired_interval) << std::endl;
+            
+            double fact = floor((ros::Time::now().toSec() - traj.GetStartTime())/_send_desired_interval);
+
+            last_request_timer = traj.GetStartTime() + _send_desired_interval * fact;
+            
+            if (traj.isCompleted(ros::Time::now().toSec()))
             {
                 printf("%s[main.cpp] Current Altitude is: %lf/%lf \n", KBLU, uav_pose.pose.position.z, takeoff_pos.z());
                 printf("%s[main.cpp] Takeoff Complete \n", KGRN);
                 task_complete = true;
                 last_mission_pos = takeoff_pos;
                 uav_task = kHover;
+                break;
             }
         }
         else 
         {
             break;
         }
-        traj.calcDesired(ros::Time::now().toSec() - prev_traj_replan);
+        Vector3d pos; Vector3d vel; Vector3d acc;
+
+        if (!traj.GetDesiredState(last_request_timer, &pos, &vel, &acc))
+        {
+            printf("%s[main.cpp] Takeoff Desired State Error \n", KRED);
+            break;
+        }
         
-        uavDesiredControlHandler(traj.returnPose(), traj.returnVel());
+        uavDesiredControlHandler(pos, vel);
         
         break;
     }
 
     case kHover:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(5.0)))
+        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > 5.0))
         {
-            last_request_timer = ros::Time::now();
+            last_request_timer = ros::Time::now().toSec();
  
             printf("%s[main.cpp] Hovering @ ENU pos (%.2lf, %.2lf, %.2lf) last_mission_pos (%.2lf, %.2lf, %.2lf) \n", KBLU, 
                 uav_pose.pose.position.x, 
@@ -399,37 +466,62 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 
     case kHome:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_send_desired_interval)))
+        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > _send_desired_interval))
         {
-            last_request_timer = ros::Time::now();
-            Vector3d pose_diff = current_pos - takeoff_pos;
-            double sqrt_diff = sqrt(pow(pose_diff.x(),2) + pow(pose_diff.y(),2) + pow(pose_diff.z(),2));
-            // traj is complete is better than using (sqrt_diff < 0.2)
-            if (traj.isCompleted())
+            std::cout << KYEL << "[main.cpp] traj_sync " << KNRM << (ros::Time::now().toSec() - last_request_timer) - (_send_desired_interval) << std::endl;
+            
+            double fact = floor((ros::Time::now().toSec() - traj.GetStartTime())/_send_desired_interval);
+
+            last_request_timer = traj.GetStartTime() + _send_desired_interval * fact;
+            
+            if (traj.isCompleted(ros::Time::now().toSec()))
             {
                 printf("%s[main.cpp] Home Complete \n", KGRN);
                 task_complete = true;
                 last_mission_pos = takeoff_pos;
                 uav_task = kHover;
+                break;
             }
         }
         else 
         {
             break;
         }
-        traj.calcDesired(ros::Time::now().toSec() - prev_traj_replan);
+        Vector3d pos; Vector3d vel; Vector3d acc;
+
+        traj.GetDesiredState(last_request_timer, &pos, &vel, &acc);
         
         // Get the desired pose from the trajectory handler
-        uavDesiredControlHandler(traj.returnPose(), traj.returnVel());
+        uavDesiredControlHandler(pos, vel);
         
         break;
     }
 
     case kMission:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_send_desired_interval)))
+        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > _send_desired_interval))
         {
-            last_request_timer = ros::Time::now();
+            std::cout << KYEL << "[main.cpp] traj_sync " << KNRM << (ros::Time::now().toSec() - last_request_timer) - (_send_desired_interval) << std::endl;
+
+            double fact = floor((ros::Time::now().toSec() - traj.GetStartTime())/_send_desired_interval);
+
+            last_request_timer = traj.GetStartTime() + _send_desired_interval * fact;
+
+            if (traj.isCompleted(ros::Time::now().toSec()))
+            {
+                printf("%s[main.cpp] Mission Complete \n", KGRN);
+                task_complete = true;
+                Vector3d last_pos;
+                if (!traj.returnControlPointPose(
+                    traj.returnFixedCPColumn()-1, &last_pos))
+                {
+                    printf("%s[main.cpp] REJECT [Last Position]\n", KRED);
+                    break;
+                }
+                last_mission_pos = last_pos;
+                uav_task = kHover;
+                break;
+            }
         }
         else
         {
@@ -437,54 +529,57 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         }
 
         /** @brief recalculate trajectory during mission **/
-        // if (ros::Time::now().toSec() - prev_traj_replan > _trajectory_calc_interval)
-        // {
-        //     printf("%s[main.cpp] Recalculating trajectory! \n", KGRN);
-        //     traj.recalculateTrajectory(current_pos, current_vel, Vector3d (0,0,0),
-        //         ros::Time::now().toSec() - prev_traj_replan);
-        //     prev_traj_replan = ros::Time::now().toSec();
-        //     break;
-        // }
+        /** @brief TODO **/    
+        
+        Vector3d pos; Vector3d vel; Vector3d acc;
 
-        traj.calcDesired(ros::Time::now().toSec() - prev_traj_replan);
-        if (traj.isCompleted())
-        {
-            printf("%s[main.cpp] Mission Complete \n", KGRN);
-            task_complete = true;
-            last_mission_pos = traj.returnPose();
-            uav_task = kHover;
-        }
+        traj.GetDesiredState(last_request_timer, &pos, &vel, &acc);
         
         // Get the desired pose from the trajectory handler
-        uavDesiredControlHandler(traj.returnPose(), traj.returnVel());
+        uavDesiredControlHandler(pos, vel);
         
         break;
     }
 
     case kLand:
     {
-        if (!task_complete && (ros::Time::now() - last_request_timer > ros::Duration(_send_desired_interval)))
+        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > _send_desired_interval))
         {
-            last_request_timer = ros::Time::now();
+            std::cout << KYEL << "[main.cpp] traj_sync " << KNRM << (ros::Time::now().toSec() - last_request_timer) - (_send_desired_interval) << std::endl;
+            
+            double fact = floor((ros::Time::now().toSec() - traj.GetStartTime())/_send_desired_interval);
+
+            last_request_timer = traj.GetStartTime() + _send_desired_interval * fact;
+
+            if (traj.isCompleted(ros::Time::now().toSec()))
+            {
+                printf("%s[main.cpp] Land Complete \n", KGRN);
+                task_complete = true;
+                Vector3d last_pos;
+                if (!traj.returnControlPointPose(
+                    traj.returnFixedCPColumn()-1, &last_pos))
+                {
+                    printf("%s[main.cpp] REJECT [Last Position]\n", KRED);
+                    break;
+                }
+                last_mission_pos = last_pos;
+                // Somehow this disarms the drone
+                // We killing it with idleness (kindness)
+                uav_task = kIdle;
+                break;
+            }
         }
         else
         {
             break;
         }
 
-        traj.calcDesired(ros::Time::now().toSec() - prev_traj_replan);
-        if (traj.isCompleted())
-        {
-            printf("%s[main.cpp] Land Complete \n", KGRN);
-            task_complete = true;
-            last_mission_pos = traj.returnPose();
-            // Somehow this disarms the drone
-            // We kill it with idleness
-            uav_task = kIdle;
-        }
+        Vector3d pos; Vector3d vel; Vector3d acc;
+
+        traj.GetDesiredState(last_request_timer, &pos, &vel, &acc);
         
         // Get the desired pose from the trajectory handler
-        uavDesiredControlHandler(traj.returnPose(), traj.returnVel());
+        uavDesiredControlHandler(pos, vel);
 
         // uavDesiredControlHandler(Vector3d (home.pose.position.x,home.pose.position.y,home.pose.position.z), 
             // Vector3d (0,0,0));
@@ -522,4 +617,40 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
     default:
         break;
     }
+}
+
+bool taskmaster::UnpackWaypoint(MatrixXd *_waypoint, string _file_location)
+{
+        printf("%s[main.h] Trying to open %s \n", KYEL, _file_location.c_str());
+        ifstream file(_file_location);
+        
+        if (!file)
+        {
+            printf("%s[main.h] File not present! \n", KRED);
+            return false;
+        }
+        printf("%s[main.h] Success, found %s \n", KGRN, _file_location.c_str());
+
+        io::CSVReader<3> in(_file_location);
+        in.read_header(io::ignore_extra_column, "xpos", "ypos", "zpos");
+        double xpos; double ypos; double zpos;
+        std::vector<double> x; std::vector<double> y; std::vector<double> z;
+        int total_row = 0;
+        // First pass is to get number of rows
+        while (in.read_row(xpos, ypos, zpos)){
+            total_row++;
+            x.push_back (xpos); y.push_back (ypos); z.push_back (zpos);
+            std::cout << KBLU << "[main.cpp] " << "[Unpack Waypoint] " << KNRM << xpos << " " << ypos << " " << zpos << std::endl;
+        }
+        MatrixXd waypoint = MatrixXd::Zero(3, total_row);
+        *_waypoint = MatrixXd::Zero(3, total_row);
+        for (int i = 0; i < x.size(); i++)
+        {
+            waypoint(0,i) = x[i]; 
+            waypoint(1,i) = y[i]; 
+            waypoint(2,i) = z[i];
+        }
+        *_waypoint = waypoint;
+
+        return true;
 }

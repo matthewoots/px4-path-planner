@@ -130,6 +130,8 @@ public:
         }
     }
 
+    bool UnpackWaypoint(MatrixXd *_waypoint, string _file_location);
+
 private:
     ros::NodeHandle _nh;
 
@@ -153,15 +155,14 @@ private:
     bool _setpoint_raw_mode;
     bool takeoff_flag;
     bool task_complete;
-    bool _vel_initialised;
-    bool _debug;
 
     double _send_desired_interval;
-    double _control_points_interval;
-    double _trajectory_calc_interval;
+    double _trajectory_pub_rate;
     double _takeoff_height;
     double _common_max_vel;
+    double _common_min_vel;
     double curr_roll, curr_pitch, curr_yaw;
+    
     /** @brief Used for mission timer, when to replan the trajectory */ 
     double mission_start_time;
     double prev_traj_replan;
@@ -170,11 +171,13 @@ private:
     int uav_task;
     int uav_prev_task;
     int _unique_id_range;
+    int _order;
+    int _control_points_division;
     vector<int> uav_id;
     
     std::string _wp_file_location;
 
-    ros::Time last_request_timer;
+    double last_request_timer;
 
     mavros_msgs::CommandBool arm_cmd;
 
@@ -192,4 +195,5 @@ private:
     geometry_msgs::PoseStamped home;
 
     trajectory traj;
+    MatrixXd wp;
 };

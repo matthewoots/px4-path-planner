@@ -25,7 +25,7 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
     
     int order = 3;
-    int wp_count = 2;
+    int wp_count = 1;
     int range = 4;
     int knotdiv = 4;
     double start = 0.0; 

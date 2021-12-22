@@ -56,6 +56,7 @@ include_directories(
 
 add_executable(${PROJECT_NAME}_node 
 src/main.cpp 
+src/trajectory_server.cpp
 )
 
 add_executable(${PROJECT_NAME}_bspline_test 

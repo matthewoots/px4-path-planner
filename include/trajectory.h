@@ -27,35 +27,73 @@ class trajectory
 {
 private:
     int _order, _knotdiv;
-    ros::Time _start, _end;
+    double _start, _end;
     double _traj_pub_rate;
+    double _knot_span;
 
-    MatrixXd _fixed_cp; // Does not change once set
+    MatrixXd _fixed_cp; // Does not change once set  
     MatrixXd _global_cp; // Able to change for replanning
-    VectorXd _knots;
+    MatrixXd _local_cp;
+
+    VectorXd _fixed_knots;
     bs::bspline _bsp;
+
+    MatrixXd _pos; MatrixXd _vel; MatrixXd _acc; 
+    VectorXd _yaw; VectorXd _time;
 
 public:
 
-    trajectory();
-    ~trajectory();
+    // trajectory();
+    // ~trajectory();
 
-    void InitialiseParam(int order, int knotdiv, ros::Time start, 
-        ros::Time end, double traj_pub_rate)
-    {
-        _order = order;
-        _knotdiv = knotdiv;
-        _start = start; _end = end;
-        _traj_pub_rate = traj_pub_rate;
-    }
+    void Initialise(int order, int knotdiv, double traj_pub_rate);
 
     void SetClampedPath(
         MatrixXd wp, double max_vel, Vector3d start_pose);
+    
+    /** 
+    * @brief Update Partial Path with Local Control Points
+    * According to Finite Time Horizon
+    */
+    bool UpdatePartialPath(
+        double now, double _finite_time_horizon);
 
+    /** 
+    * @brief Update Full Path
+    */
+    bool UpdateFullPath();
+
+    /** 
+    * @brief Get Desired State
+    */
+    bool GetDesiredState(double now, 
+        Vector3d *pos, Vector3d *vel, Vector3d *acc);
+    
+    /** 
+    * @brief Get Local Control Points
+    */
     MatrixXd GetLocalControlPoints(
-        ros::Time start, double _finite_time_horizon);
+        double now, double _finite_time_horizon);
 
-    MatrixXd GetFixedControlPoints(){return _fixed_cp;}
-    MatrixXd GetGlobalControlPoints(){return _global_cp;}
+    /** 
+    * @brief Check if trajectory is completed
+    */
+    bool isCompleted(double now);
+
+    /** 
+    * @brief Return control point pose according to idx
+    */
+    bool returnControlPointPose(int idx, Vector3d *pos);
+
+    int returnFixedCPColumn(){return _fixed_cp.cols();};
+
+    double GetStartTime(){return _start;};
+
+    double GetEndTime(){return _end;};
+
+    MatrixXd GetFixedControlPoints(){return _fixed_cp;};
+
+    MatrixXd GetGlobalControlPoints(){return _global_cp;};
+
 
 };
