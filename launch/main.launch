@@ -1,20 +1,11 @@
 <launch>
-    <arg name="id" value="/S1" />
+    <arg name="id" value="S1" />
     
     <group ns="$(arg id)">
 	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
 		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
-		<remap from="/mavros/global_position/global" to="$(arg id)/mavros/global_position/global"/>
-		<remap from="/mavros/home_position/home" to="$(arg id)/mavros/home_position/home"/>
-		<remap from="/mavros/local_position/pose" to="$(arg id)/mavros/local_position/pose"/>
-		<remap from="/mavros/local_position/velocity_local" to="$(arg id)/mavros/local_position/velocity_local"/>
-		<remap from="/mavros/setpoint_position/local" to="$(arg id)/mavros/setpoint_position/local"/>
-		<remap from="/mavros/setpoint_raw/local" to="$(arg id)/mavros/setpoint_raw/local"/>
-		<remap from="/mavros/cmd/arming" to="$(arg id)/mavros/cmd/arming"/>
-		<remap from="/mavros/set_mode" to="$(arg id)/mavros/set_mode"/>
-		<remap from="/mavros/state" to="$(arg id)/mavros/state"/>
-		<remap from="/user" to="/cmd"/>
+		<param name="agent_id" value="$(arg id)"/>
     	</node>
     	<include file="$(find mavros)/launch/px4.launch">
         	<arg name="fcu_url" value="udp://:14540@127.0.0.1:14557" />
