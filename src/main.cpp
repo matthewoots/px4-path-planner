@@ -207,15 +207,22 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
 
         double buffer = 8.0;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
+        double last_interval = ros::Time::now().toSec();
         // while loop to clean out buffer for command for 10s
         while (abs(clean_buffer - ros::Time::now().toSec()) < buffer)
         {
-            Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
-            uavDesiredControlHandler(home_pose, 
-                Vector3d (0,0,0),
-                Vector3d (0,0,0),
-                home_yaw);
-            // std::cout << KBLU << "[main.cpp] Publish buffer" << KNRM << home_pose << std::endl;
+            // WARNING : Publishing too fast will result in the mavlink bandwidth to be clogged up hence we need to limit this rate
+            if (ros::Time::now().toSec() - last_interval > _send_desired_interval) 
+            {
+                Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
+                uavDesiredControlHandler(home_pose, 
+                    Vector3d (0,0,0),
+                    Vector3d (0,0,0),
+                    home_yaw);
+                // std::cout << KBLU << "[main.cpp] Publish buffer" << KNRM << home_pose << std::endl;
+                last_interval = ros::Time::now().toSec();
+            }
+            
         }
 
         TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
@@ -391,22 +398,27 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 
     case kHover:
     {
-        if (!task_complete && (ros::Time::now().toSec() - last_request_timer > 5.0))
-        {
-            last_request_timer = ros::Time::now().toSec();
+        // if (!task_complete && (ros::Time::now().toSec() - last_request_timer > 5.0))
+        // {
+        //     last_request_timer = ros::Time::now().toSec();
  
-            printf("%s[main.cpp] Hovering @ ENU pos (%.2lf, %.2lf, %.2lf) last_mission_pos (%.2lf, %.2lf, %.2lf) \n", KBLU, 
-                uav_pose.pose.position.x, 
-                uav_pose.pose.position.y,
-                uav_pose.pose.position.z,
-                last_mission_pos.x(),
-                last_mission_pos.y(),
-                last_mission_pos.z());
-        }
-        uavDesiredControlHandler(last_mission_pos, 
+        //     printf("%s[main.cpp] Hovering @ ENU pos (%.2lf, %.2lf, %.2lf) last_mission_pos (%.2lf, %.2lf, %.2lf) \n", KBLU, 
+        //         uav_pose.pose.position.x, 
+        //         uav_pose.pose.position.y,
+        //         uav_pose.pose.position.z,
+        //         last_mission_pos.x(),
+        //         last_mission_pos.y(),
+        //         last_mission_pos.z());
+        // }
+
+        if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
+        {
+            uavDesiredControlHandler(last_mission_pos, 
             Vector3d (0,0,0),
             Vector3d (0,0,0),
             last_mission_yaw);
+            last_request_timer = ros::Time::now().toSec();
+        }
 
         break;
     }

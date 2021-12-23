@@ -1,7 +1,7 @@
 <launch>
-    <arg name="id" value="S1" />
-	<arg name="mavros_fcu_url" value="/dev/ttyS3:500000" />
-	<arg name="mavros_gcs_url" value="udp://@192.168.31.61" />
+    <arg name="id" default="S1" />
+	<arg name="mavros_fcu_url" default="/dev/ttyS3:500000" />
+	<arg name="mavros_gcs_url" default="udp://@192.168.31.61" />
     
     <group ns="$(arg id)">
 	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
