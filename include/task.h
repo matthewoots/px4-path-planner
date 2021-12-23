@@ -50,7 +50,6 @@
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/PositionTarget.h>
 #include <mavros_msgs/CommandTOL.h> 
-#include <common_msgs/state.h>
 #include <common_msgs/target.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <mavros_msgs/HomePosition.h>

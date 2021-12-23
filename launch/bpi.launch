@@ -1,0 +1,18 @@
+<launch>
+    <arg name="id" value="S1" />
+	<arg name="mavros_fcu_url" value="/dev/ttyS3:500000" />
+	<arg name="mavros_gcs_url" value="udp://@192.168.31.61" />
+    
+    <group ns="$(arg id)">
+	<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
+		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+		<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
+		<param name="agent_id" value="$(arg id)"/>
+    	</node>
+    	<include file="$(find mavros)/launch/px4.launch">
+        	<arg name="fcu_url" value="$(arg mavros_fcu_url)" />
+			<arg name="gcs_url" value="$(arg mavros_gcs_url)" />
+    	</include>
+    </group>
+
+</launch>
