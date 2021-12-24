@@ -205,7 +205,7 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
 
         double clean_buffer = ros::Time::now().toSec();
 
-        double buffer = 8.0;
+        double buffer = 5.0;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
         // while loop to clean out buffer for command for 10s

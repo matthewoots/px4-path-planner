@@ -249,9 +249,10 @@ public:
             // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
             // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
             pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            // pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
+            pos_sp.type_mask = 3576; // Ignore Velocity, Acceleration and Yaw
+	    // pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
             // pos_sp.type_mask = 3072; // Ignore Yaw
-            pos_sp.type_mask = 2048;
+            // pos_sp.type_mask = 2048;
             local_pos_raw_pub.publish(pos_sp);
         }
     }
