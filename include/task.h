@@ -55,6 +55,8 @@
 #include <mavros_msgs/HomePosition.h>
 #include <std_msgs/Byte.h>
 
+#include "px4_path_planner/Bspline.h"
+
 #include <tf/tf.h>
 
 #include <trajectory.h>
@@ -93,6 +95,8 @@ private:
 
     ros::Publisher local_pos_pub; 
     ros::Publisher local_pos_raw_pub;
+
+    ros::Publisher bspline_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
@@ -249,8 +253,9 @@ public:
             // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
             // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
             pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-            pos_sp.type_mask = 3576; // Ignore Velocity, Acceleration and Yaw
-	    // pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
+            // pos_sp.type_mask = 3576; // Ignore Velocity, Acceleration and Yaw
+            pos_sp.type_mask = 2552; // Ignore Velocity, Acceleration
+            // pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
             // pos_sp.type_mask = 3072; // Ignore Yaw
             // pos_sp.type_mask = 2048;
             local_pos_raw_pub.publish(pos_sp);
@@ -353,8 +358,44 @@ public:
             printf("%s[main.cpp] %s Desired State Error \n", KRED, TaskToString(taskmaster::uav_task).c_str());
             return;
         }
-        
+
+        taskmaster::PublishBspline();
         taskmaster::uavDesiredControlHandler(pos, vel, acc, _calculated_yaw);
+        return;
+    }
+
+    void PublishBspline()
+    {
+        // printf("%s[main.cpp] Publishing Bspline \n", KGRN);
+        px4_path_planner::Bspline bspline;
+        bspline.order = traj.GetOrder();
+        bspline.knot_division = traj.GetKnotDivision();
+
+        MatrixXd gcp = MatrixXd (traj.GetGlobalControlPoints());
+        VectorXd knots = VectorXd (traj.GetKnots());
+
+        // printf("%s[main.cpp] Publishing gcp \n", KGRN);
+        bspline.global_control_points.reserve(gcp.cols());
+
+        for (int i = 0; i < gcp.cols(); i++)
+        {
+            geometry_msgs::Point pt;
+            pt.x = gcp(0,i);
+            pt.y = gcp(1,i);
+            pt.z = gcp(2,i);
+            // std::cout << KGRN << "[main.cpp] CP \n" << KNRM << pt << std::endl;
+            bspline.global_control_points.push_back(pt);
+        }
+        // std::cout << KGRN << "[main.cpp] cp_size \n" << KNRM << bspline.global_control_points.size() << std::endl;
+
+        // printf("%s[main.cpp] Publishing knots \n", KGRN);
+        bspline.knot.reserve(knots.rows());
+        for (int j = 0; j < knots.size(); j++)
+        {
+            bspline.knot[j] = (float)knots[j];
+        }
+
+        bspline_pub.publish(bspline);
         return;
     }
 

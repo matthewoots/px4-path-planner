@@ -3,7 +3,7 @@ setpoint_raw_mode: true
 
 # Spline Parameters
 spline_order: 5
-control_points_division: 4
+control_points_division: 10
 trajectory_pub_rate: 20
 
 # Total number of Agents
@@ -11,5 +11,5 @@ unique_id_range: 20
 
 # Agent Parameters
 takeoff_height: 1.3
-common_max_vel: 1.0
-common_min_vel: 0.1
+common_max_vel: 1.5
+common_min_vel: 0.2

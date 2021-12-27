@@ -112,16 +112,17 @@ public:
     * @brief Return control point pose according to idx
     */
     bool returnControlPointPose(int idx, Vector3d *pos);
-
-    int returnFixedCPColumn(){return _fixed_cp.cols();};
-
+    
     double GetStartTime(){return _start;};
-
     double GetEndTime(){return _end;};
 
     MatrixXd GetFixedControlPoints(){return _fixed_cp;};
-
     MatrixXd GetGlobalControlPoints(){return _global_cp;};
 
+    VectorXd GetKnots(){return _fixed_knots;};
+
+    int GetOrder(){return _order;};
+    int GetKnotDivision(){return _knotdiv;};
+    int returnFixedCPColumn(){return _fixed_cp.cols();};
 
 };

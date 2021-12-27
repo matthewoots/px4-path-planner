@@ -13,7 +13,21 @@ find_package(catkin
   std_msgs
   common_msgs
   tf
+  message_generation
 )
+
+# Generate messages in the 'msg' folder
+add_message_files(
+  FILES
+  Bspline.msg
+)
+
+# Generate added messages
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs
+)
+
 find_package(Eigen3 REQUIRED)
 
 ## System dependencies are found with CMake's conventions
@@ -59,12 +73,16 @@ src/main.cpp
 src/trajectory_server.cpp
 )
 
+add_executable(${PROJECT_NAME}_visualization_node 
+src/visualization/bspline_visualization.cpp
+)
+
 add_executable(${PROJECT_NAME}_bspline_test 
-src/bspline_test.cpp 
+src/bspline/bspline_test.cpp 
 )
 
 add_executable(${PROJECT_NAME}_bspline_test_functions
-src/bspline_test_functions.cpp 
+src/bspline/bspline_test_functions.cpp 
 )
 
 ## Rename C++ executable without prefix
@@ -79,6 +97,10 @@ src/bspline_test_functions.cpp
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(${PROJECT_NAME}_visualization_node 
   ${catkin_LIBRARIES}
 )
 

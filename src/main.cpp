@@ -114,6 +114,12 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     local_pos_raw_pub = _nh.advertise<mavros_msgs::PositionTarget>(
         "/" + _id + "/mavros/setpoint_raw/local", 10);
     
+    /** 
+    * @brief Publisher that publishes Bspline
+    */
+    bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
+        "/" + _id + "/path/bspline", 10);
+    
 
     /** 
     * @brief Service Client that handles arming in Mavros
@@ -208,7 +214,7 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         double buffer = 5.0;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
-        // while loop to clean out buffer for command for 10s
+        // while loop to clean out buffer for command for 5s
         while (abs(clean_buffer - ros::Time::now().toSec()) < buffer)
         {
             // WARNING : Publishing too fast will result in the mavlink bandwidth to be clogged up hence we need to limit this rate
@@ -469,6 +475,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         Vector3d pos; Vector3d vel; Vector3d acc; 
         double _calculated_yaw = traj.GetDesiredYaw(last_request_timer, yaw);
 
+        PublishBspline();
         traj.GetDesiredState(last_request_timer, &pos, &vel, &acc);
         
         // Get the desired pose from the trajectory handler
