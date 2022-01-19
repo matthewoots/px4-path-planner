@@ -20,12 +20,16 @@ find_package(catkin
 add_message_files(
   FILES
   Bspline.msg
+  leader_follower.msg
+  mission_phase.msg
+  agent.msg
 )
 
 # Generate added messages
 generate_messages(
   DEPENDENCIES
   geometry_msgs
+  px4_path_planner
 )
 
 find_package(Eigen3 REQUIRED)
@@ -54,6 +58,9 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   include
+  external_packages/csv
+  external_packages/LBFGSpp/include
+  external_packages/spline
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
 )
@@ -73,6 +80,7 @@ src/main.cpp
 src/trajectory_server.cpp
 )
 
+## All these are for testing purposes so we can leave them here
 add_executable(${PROJECT_NAME}_visualization_node 
 src/visualization/bspline_visualization.cpp
 )
@@ -100,6 +108,7 @@ target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
 )
 
+## All these are for testing purposes so we can leave them here
 target_link_libraries(${PROJECT_NAME}_visualization_node 
   ${catkin_LIBRARIES}
 )

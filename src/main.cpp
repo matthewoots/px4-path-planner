@@ -49,6 +49,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<int>("unique_id_range", _unique_id_range, 10);
     _nh.param<int>("control_points_division", _control_points_division, 1);
     _nh.param<bool>("setpoint_raw_mode", _setpoint_raw_mode, true);
+    _nh.param<bool>("global_planning", _global_planning, false);
     _nh.param<double>("trajectory_pub_rate", _trajectory_pub_rate, 1.0);_nh.param<double>("common_min_vel", _common_min_vel, 0.1);
     _nh.param<double>("takeoff_height", _takeoff_height, 1.0);
     _nh.param<double>("common_max_vel", _common_max_vel, 1.0);
@@ -58,6 +59,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 
     printf("%s------------- Parameter ------------- \n", KYEL);
     printf("%s  _setpoint_raw_mode =%s %s \n", KBLU, KNRM, _setpoint_raw_mode ? "true" : "false");
+    printf("%s  _global_planning =%s %s \n", KBLU, KNRM, _global_planning ? "true" : "false");
     printf("%s  _spline_order =%s %d \n", KBLU, KNRM, _order);
     printf("%s  _unique_id_range =%s %d \n", KBLU, KNRM, _unique_id_range);
     printf("%s  _send_desired_interval =%s %lf \n", KBLU, KNRM, _send_desired_interval);
@@ -86,12 +88,6 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         "/" + _id + "/mavros/local_position/velocity_local", 1, &taskmaster::uavVelCallback, this);
     /** 
     * @brief [For Outdoor Usage with GPS enabled] 
-    * Get current GPS location
-    */
-    uav_gps_cur_sub = _nh.subscribe<sensor_msgs::NavSatFix>(
-        "/" + _id + "/mavros/global_position/global", 1, &taskmaster::gpsCurrentCallback, this);
-    /** 
-    * @brief [For Outdoor Usage with GPS enabled] 
     * Get GPS home location
     */
     uav_gps_home_sub = _nh.subscribe<mavros_msgs::HomePosition>(
@@ -102,6 +98,21 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
         "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);
 
+    if (_global_planning)
+    {
+    /** 
+    * @brief Handles global position from global node
+    * Only use this if global_planning is turned on
+    */
+    global_agent_sub = _nh.subscribe<px4_path_planner::agent>(
+        "/higher_command", 1, &taskmaster::globalAgentsCallBack, this);
+    /** 
+    * @brief [For Outdoor Usage with GPS enabled] 
+    * Get current GPS location
+    */
+    uav_gps_cur_sub = _nh.subscribe<sensor_msgs::NavSatFix>(
+        "/" + _id + "/mavros/global_position/global", 1, &taskmaster::gpsCurrentCallback, this);
+    }
 
     /** 
     * @brief Publisher that publishes control position setpoints to Mavros
@@ -254,9 +265,13 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
             break;
         }
         std::cout << KBLU << "[main.cpp] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
-      
-        TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
-            wp, kHover, kMission);
+
+        // If its not global_planning, we should revert to normal local planning
+        if (!_global_planning)
+            TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+                wp, kHover, kMission);
+        // else we will go straight to the mission and let the 
+
         break;
     }
 

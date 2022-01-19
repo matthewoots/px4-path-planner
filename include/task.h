@@ -56,10 +56,12 @@
 #include <std_msgs/Byte.h>
 
 #include "px4_path_planner/Bspline.h"
+#include "px4_path_planner/agent.h"
 
 #include <tf/tf.h>
 
 #include <trajectory.h>
+#include <formation.h>
 
 using namespace Eigen;
 using namespace std;
@@ -92,9 +94,12 @@ private:
     ros::Subscriber uav_pose_sub;
     ros::Subscriber uav_vel_sub;
     ros::Subscriber uav_cmd_sub;
+    
+    // Use in global missions for swarm
+    ros::Subscriber global_agent_sub;
 
-    ros::Publisher local_pos_pub; 
-    ros::Publisher local_pos_raw_pub;
+    ros::Publisher local_pos_pub; // Only publishes position
+    ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
 
     ros::Publisher bspline_pub;
 
@@ -105,10 +110,11 @@ private:
 
     bool _initialised;
     bool _setpoint_raw_mode;
-    bool takeoff_flag;
-    bool task_complete;
+    bool _global_planning; // In other words, swarm
+    bool takeoff_flag; // Whether the agent has taken off
+    bool task_complete; // When task is complete
 
-    double _send_desired_interval;
+    double _send_desired_interval; // Trajectory interval, for bspline planning
     double _trajectory_pub_rate;
     double _takeoff_height;
     double _common_max_vel;
@@ -126,6 +132,13 @@ private:
     int _control_points_division;
 
     vector<int> uav_id;
+
+    // Use in global missions for swarm
+    geometry_msgs::Point global_offset;
+    geometry_msgs::Point leader_pose;
+    float leader_yaw;
+    pair<bool, bool> lf_data;
+    pair<int, bool> mp_data;
     
     std::string _wp_file_location;
     std::string _id;
@@ -141,6 +154,7 @@ private:
     mavros_msgs::State uav_current_state;
     sensor_msgs::NavSatFix uav_gps_cur;
     geometry_msgs::PoseStamped uav_pose;
+    geometry_msgs::PoseStamped uav_global_pose;
     geometry_msgs::PoseStamped home;
     geometry_msgs::TwistStamped uav_vel;
 
@@ -179,6 +193,38 @@ public:
     void gpsCurrentCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
     {
         uav_gps_cur = *msg;
+    }
+
+    void globalAgentsCallBack(const px4_path_planner::agent::ConstPtr &msg)
+    {
+        px4_path_planner::agent global_agent = *msg;
+        uav_global_pose = global_agent.global_position;
+        global_offset = global_agent.global_offset;
+
+        /*
+        * The global planner must construct must contruct 
+        */
+
+        /* 
+        * Check whether to activate leader_follower mode 
+        * 1. use_leader_follower & 2. is either leader_or_follower
+        */
+        lf_data.first = global_agent.lf.use_leader_follower;
+        lf_data.second = global_agent.lf.leader_or_follower;
+
+        /* 
+        * Check which mission phase we are currently on now
+        * This is only if [mission] have several phases
+        * 1. mission_code & 2. completed the sub mission
+        */
+        mp_data.first = global_agent.mp.mission_code;
+        mp_data.second = global_agent.mp.completed;
+
+        /*
+        * Leader pose should be broadcasted and saved this is decided by higher command
+        */
+        leader_pose = global_agent.leader_global_pose;
+        leader_yaw = global_agent.leader_global_yaw;
     }
     
     /** @brief Get current uav FCU state */

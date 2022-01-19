@@ -1,0 +1,8 @@
+int32 id
+geometry_msgs/PoseStamped global_position
+geometry_msgs/Point global_offset
+px4_path_planner/leader_follower lf
+geometry_msgs/Point leader_global_pose
+float32 leader_global_yaw
+px4_path_planner/mission_phase mp
+px4_path_planner/Bspline bs

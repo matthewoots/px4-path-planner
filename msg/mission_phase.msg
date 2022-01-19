@@ -1,0 +1,2 @@
+int32 mission_code
+bool completed

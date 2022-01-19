@@ -7,6 +7,8 @@ Cubic spline library is not used and is replaced by a Custom Bspline Trajectory 
 ```
 3. **Added** CSV parser to C++ (https://github.com/ben-strasser/fast-cpp-csv-parser) this is used for passing waypoints in a certain format to generate the trajectory
 
+3. **Added** LBFGS++ (https://github.com/yixuan/LBFGSpp) using an unconstrained nonlinear optimization to compute a safe corridor and reciprocal avoidance of other agents
+
 4. **Included** Eigen3 library (`Vector3d` and `MatrixXd`)
 
 5. Using `v1.12.3` of PX4-Autopilot, run with `make px4_sitl gazebo HEADLESS=1`

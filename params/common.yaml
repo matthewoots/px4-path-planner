@@ -1,5 +1,6 @@
 # Command Parameters
 setpoint_raw_mode: true
+global_planning: true
 
 # Spline Parameters
 spline_order: 5

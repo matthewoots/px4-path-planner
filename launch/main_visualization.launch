@@ -2,8 +2,8 @@
     <arg name="id" value="S1" />
     
     <group ns="$(arg id)">
-		<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 		<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
+			<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg id)"/>
 		</node>
