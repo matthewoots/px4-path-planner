@@ -105,6 +105,7 @@ private:
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
 
     ros::Publisher bspline_pub;
+    ros::Publisher global_pos_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
@@ -122,6 +123,7 @@ private:
     double _common_max_vel;
     double _common_min_vel;
     double roll, pitch, yaw;
+    double roll_nwu, pitch_nwu, yaw_nwu;
     double last_request_timer;
     double last_mission_yaw;
     double home_yaw;
@@ -237,24 +239,31 @@ public:
         current_pos.y() = (double)uav_pose.pose.position.y;
         current_pos.z() = (double)uav_pose.pose.position.z;
 
-        tf::Quaternion q(
+        tf::Quaternion q_enu(
             uav_pose.pose.orientation.x, uav_pose.pose.orientation.y,
             uav_pose.pose.orientation.z, uav_pose.pose.orientation.w);
-        tf::Matrix3x3 m(q);
-        m.getRPY(roll, pitch, yaw);
+        tf::Matrix3x3 m_enu(q_enu);
+        m_enu.getRPY(roll, pitch, yaw);
+    //     std::cout << KYEL << "[task.h] enu_yaw=" << KNRM <<
+    // yaw << std::endl;
 
-        // Convert from ENU to NWU
-        geometry_msgs::PoseStamped nwu_tmp = transform_pose_stamped(uav_pose, Vector3d(0,0,90.0));
-        nwu_tmp.pose.position.x += global_offset.x();
-        nwu_tmp.pose.position.x += global_offset.y();
-        nwu_tmp.pose.position.x += global_offset.z();
+        // Convert from ENU to global NWU
+        uav_global_pose = convert_enu_to_global_nwu(uav_pose);
 
-        uav_global_pose = nwu_tmp;
+        tf::Quaternion q_nwu(
+            uav_global_pose.pose.orientation.x, uav_global_pose.pose.orientation.y,
+            uav_global_pose.pose.orientation.z, uav_global_pose.pose.orientation.w);
+        tf::Matrix3x3 m_nwu(q_nwu);
+        m_nwu.getRPY(roll_nwu, pitch_nwu, yaw_nwu);
+    //     std::cout << KGRN << "[task.h] nwu_yaw=" << KNRM <<
+    // yaw_nwu << std::endl;
 
-        // Global in NWU frame
-        global_pos.x() = (double)nwu_tmp.pose.position.x;
-        global_pos.y() = (double)nwu_tmp.pose.position.y;
-        global_pos.z() = (double)nwu_tmp.pose.position.z;
+        // Global in NWU frame in Vector3d
+        global_pos.x() = (double)uav_global_pose.pose.position.x;
+        global_pos.y() = (double)uav_global_pose.pose.position.y;
+        global_pos.z() = (double)uav_global_pose.pose.position.z;
+
+        global_pos_pub.publish(uav_global_pose);
     }
 
     /** @brief Get bypass command message */
@@ -269,6 +278,21 @@ public:
         Vector3d command_acc, 
         double command_yaw)
     {
+        // Do conversion from NWU_global to ENU using convert_global_nwu_to_enu
+        // command_pose need to change to ENU with global conversion
+        // command_vel and command_acc do not need
+        // Calculated yaw need to change too
+        geometry_msgs::PoseStamped pos_nwu_sp_tmp;
+        pos_nwu_sp_tmp.pose.position.x = command_pose.x();
+        pos_nwu_sp_tmp.pose.position.y = command_pose.y();
+        pos_nwu_sp_tmp.pose.position.z = command_pose.z();
+
+        geometry_msgs::PoseStamped pos_enu_sp_tmp = convert_global_nwu_to_enu(pos_nwu_sp_tmp);
+
+        command_yaw += 90.0/180.0 * 3.1415;
+    //     std::cout << KBLU << "[task.h] enu_cmd_yaw=" << KNRM <<
+    // command_yaw << std::endl;
+
         // When in position control mode, send only waypoints
         if (!_setpoint_raw_mode)
         {
@@ -282,9 +306,11 @@ public:
         else
         {
             mavros_msgs::PositionTarget pos_sp;
-            pos_sp.position.x = command_pose.x();
-            pos_sp.position.y = command_pose.y();
-            pos_sp.position.z = command_pose.z();
+            // pos_sp.position.x = command_pose.x();
+            // pos_sp.position.y = command_pose.y();
+            // pos_sp.position.z = command_pose.z();
+
+            pos_sp.position = pos_enu_sp_tmp.pose.position;
 
             pos_sp.velocity.x = command_vel.x();
             pos_sp.velocity.y = command_vel.y();
@@ -393,7 +419,10 @@ public:
                 printf("%s[task.h] %s Complete \n", KGRN, TaskToString(taskmaster::uav_task).c_str());
                 taskmaster::task_complete = true;
                 taskmaster::last_mission_pos = final_pose;
-                taskmaster::last_mission_yaw = taskmaster::yaw;
+                // *** This uses ENU, obsolete since we use NWU ***
+                // taskmaster::last_mission_yaw = taskmaster::yaw;
+
+                taskmaster::last_mission_yaw = taskmaster::yaw_nwu;
                 taskmaster::uav_task = _finished_task;
                 return;
             }
@@ -406,7 +435,11 @@ public:
 
         Vector3d pos; Vector3d vel; Vector3d acc; 
         // double _calculated_yaw = taskmaster::home_yaw;
-        double _calculated_yaw = yaw;
+
+        // *** This uses ENU, obsolete since we use NWU ***
+        // double _calculated_yaw = yaw;
+        double _calculated_yaw = yaw_nwu;
+
         if (!traj.GetDesiredState(taskmaster::last_request_timer, &pos, &vel, &acc))
         {
             printf("%s[task.h] %s Desired State Error \n", KRED, TaskToString(taskmaster::uav_task).c_str());
@@ -481,6 +514,38 @@ public:
         tf2::doTransform(_p, poseStamped, transform);
 
         return poseStamped;
+    }
+
+    /* 
+    * @brief Transform PoseStamped from ENU to Global NWU
+    */
+    geometry_msgs::PoseStamped convert_enu_to_global_nwu(geometry_msgs::PoseStamped enu_pose)
+    {
+        // Convert from ENU to Global NWU
+        geometry_msgs::PoseStamped nwu_tmp = transform_pose_stamped(enu_pose, Vector3d(0,0,-90.0));
+        nwu_tmp.header.stamp.sec = enu_pose.header.stamp.sec; 
+        nwu_tmp.header.stamp.nsec = enu_pose.header.stamp.nsec; 
+        nwu_tmp.pose.position.x += global_offset.x();
+        nwu_tmp.pose.position.y += global_offset.y();
+        nwu_tmp.pose.position.z += global_offset.z();
+
+        return nwu_tmp;
+    }
+
+    /* 
+    * @brief Transform PoseStamped from Global NWU to ENU 
+    */
+    geometry_msgs::PoseStamped convert_global_nwu_to_enu(geometry_msgs::PoseStamped global_nwu_pose)
+    {
+        global_nwu_pose.pose.position.x -= global_offset.x();
+        global_nwu_pose.pose.position.y -= global_offset.y();
+        global_nwu_pose.pose.position.z -= global_offset.z();
+        // Convert from ENU to Global NWU
+        geometry_msgs::PoseStamped enu_tmp = transform_pose_stamped(global_nwu_pose, Vector3d(0,0,90.0));
+        enu_tmp.header.stamp.sec = global_nwu_pose.header.stamp.sec; 
+        enu_tmp.header.stamp.nsec = global_nwu_pose.header.stamp.nsec; 
+    
+        return enu_tmp;
     }
 
 };

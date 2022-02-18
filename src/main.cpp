@@ -57,8 +57,8 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 
     // Global offset from the origin in NWU frame
     _nh.param<double>("nwu_offset_x", global_offset.x(), 0.0);
-    _nh.param<double>("nwu_offset_x", global_offset.y(), 0.0);
-    _nh.param<double>("nwu_offset_x", global_offset.z(), 0.0);
+    _nh.param<double>("nwu_offset_y", global_offset.y(), 0.0);
+    _nh.param<double>("nwu_offset_z", global_offset.z(), 0.0);
 
     _send_desired_interval = 1 / _trajectory_pub_rate;
 
@@ -77,6 +77,8 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         global_offset.x(), global_offset.y(), global_offset.z());
     printf("%s------------------------------------- \n", KYEL);
 
+
+    /* ------------ Subscribers ------------ */
     /** 
     * @brief Get Mavros State of PX4
     */
@@ -98,6 +100,9 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
         "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);        
 
+
+
+    /* ------------ Publishers ------------ */
     /** 
     * @brief Publisher that publishes control position setpoints to Mavros
     */
@@ -108,14 +113,20 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     local_pos_raw_pub = _nh.advertise<mavros_msgs::PositionTarget>(
         "/" + _id + "/mavros/setpoint_raw/local", 10);
-    
     /** 
     * @brief Publisher that publishes Bspline
     */
     bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
         "/" + _id + "/path/bspline", 10);
+    /** 
+    * @brief Publisher that publishes Global NWU Coordinates
+    */
+    global_pos_pub = _nh.advertise<geometry_msgs::PoseStamped>(
+        "/" + _id + "/global_pose", 10);
     
 
+
+    /* ------------ Service Clients ------------ */
     /** 
     * @brief Service Client that handles arming in Mavros
     */
@@ -128,6 +139,8 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         "/" + _id + "/mavros/set_mode");
 
 
+
+    /* ------------ Timers ------------ */
     /** 
     * @brief Mission Timer that handles output and publishing of setpoints to PX4
     */
@@ -195,10 +208,15 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
 
         // Set Takeoff Position
-        takeoff_pos.x() = uav_pose.pose.position.x;
-        takeoff_pos.y() = uav_pose.pose.position.y;
-        takeoff_pos.z() = uav_pose.pose.position.z + _takeoff_height;
+        // *** This uses ENU, obsolete since we use NWU ***
+        // takeoff_pos.x() = uav_pose.pose.position.x;
+        // takeoff_pos.y() = uav_pose.pose.position.y;
+        // takeoff_pos.z() = uav_pose.pose.position.z + _takeoff_height;
         
+        takeoff_pos.x() = uav_global_pose.pose.position.x;
+        takeoff_pos.y() = uav_global_pose.pose.position.y;
+        takeoff_pos.z() = uav_global_pose.pose.position.z + _takeoff_height;
+
         /** @brief Set up Takeoff Waypoints */
         MatrixXd wp = MatrixXd::Zero(3,1);
         wp.col(0) = takeoff_pos;
@@ -206,27 +224,39 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
 
         double clean_buffer = ros::Time::now().toSec();
 
-        double buffer = 5.0;
+        double buffer = 3.0;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
-        // while loop to clean out buffer for command for 5s
+        // while loop to clean out buffer for command for 3s
         while (abs(clean_buffer - ros::Time::now().toSec()) < buffer)
         {
             // WARNING : Publishing too fast will result in the mavlink bandwidth to be clogged up hence we need to limit this rate
             if (ros::Time::now().toSec() - last_interval > _send_desired_interval) 
             {
                 Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
+                // uavDesiredControlHandler(home_pose, 
+                //     Vector3d (0,0,0),
+                //     Vector3d (0,0,0),
+                //     home_yaw);
+
                 uavDesiredControlHandler(home_pose, 
                     Vector3d (0,0,0),
                     Vector3d (0,0,0),
                     home_yaw);
+                std::cout << KGRN << "[task.h] home_yaw=" << KNRM <<
+    home_yaw << std::endl;
                 // std::cout << KBLU << "[main.cpp] Publish buffer" << KNRM << home_pose << std::endl;
                 last_interval = ros::Time::now().toSec();
             }
             
         }
 
-        TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        // *** This uses ENU, obsolete since we use NWU ***
+        // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        //     wp, kIdle, kTakeOff);
+        
+        TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+            uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
             wp, kIdle, kTakeOff);
         break;
     }
@@ -308,8 +338,13 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         if (mission_mode[mission_type_count] != bypass)
         {
             // We will start finding the first of the mission waypoints
-            TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
-                    mission_wp[0], kHover, kMission);
+            // *** This uses ENU, obsolete since we use NWU ***
+            // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+            //         mission_wp[0], kHover, kMission);
+
+            TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+                uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
+                mission_wp[0], kHover, kMission);
         }
         else
             taskmaster::uav_task = kMission;
@@ -332,7 +367,12 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         wp.col(0) = takeoff_pos;
         std::cout << KBLU << "[main.cpp] " << "[Home Waypoint] " << std::endl << KNRM << wp << std::endl;
 
-        TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        // *** This uses ENU, obsolete since we use NWU ***
+        // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        //     wp, kHover, kHome);
+
+        TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+            uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
             wp, kHover, kHome);
         break;
     }
@@ -346,7 +386,10 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         }
         // Check if its at XY of home position, if not we send it to HOME then to land
         double sqdist_hpos = pow(takeoff_pos.x(),2) + pow(takeoff_pos.y(),2);
-        double sqdist_pos = pow(uav_pose.pose.position.x,2) + pow(uav_pose.pose.position.y,2);
+        // *** This uses ENU, obsolete since we use NWU ***
+        // double sqdist_pos = pow(uav_pose.pose.position.x,2) + pow(uav_pose.pose.position.y,2);
+
+        double sqdist_pos = pow(uav_global_pose.pose.position.x,2) + pow(uav_global_pose.pose.position.y,2);
 
         // if (sqdist_pos - sqdist_hpos > 1.0)
         // {
@@ -361,10 +404,20 @@ void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
         MatrixXd wp = MatrixXd::Zero(3,1);
 
         // wp.col(0) = Vector3d (home.pose.position.x, home.pose.position.y, home.pose.position.z);
-        wp.col(0) = Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, home.pose.position.z);
+        // *** This uses ENU, obsolete since we use NWU ***
+        // wp.col(0) = Vector3d (uav_pose.pose.position.x, 
+        //     uav_pose.pose.position.y, home.pose.position.z);
+        
+        wp.col(0) = Vector3d (uav_global_pose.pose.position.x, 
+            uav_global_pose.pose.position.y, home.pose.position.z);
         std::cout << KBLU << "[main.cpp] " << "[Land Waypoint] " << std::endl << KNRM << wp << std::endl;
 
-        TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        // *** This uses ENU, obsolete since we use NWU ***
+        // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+        //     wp, kHover, kLand);
+        
+        TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+            uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
             wp, kHover, kLand);
         printf("%s[main.cpp] UAV is landing! \n", KBLU);
         break;
@@ -380,19 +433,37 @@ bool taskmaster::set_offboard()
     ros::Rate rate(20.0);
     ros::Time last_request = ros::Time::now();
 
-    home.pose.position.x = uav_pose.pose.position.x;
-    home.pose.position.y = uav_pose.pose.position.y;
-    home.pose.position.z = uav_pose.pose.position.z;
-    home_yaw = yaw;
+    // *** This uses ENU, obsolete since we use NWU ***
+    // home.pose.position.x = uav_pose.pose.position.x;
+    // home.pose.position.y = uav_pose.pose.position.y;
+    // home.pose.position.z = uav_pose.pose.position.z;
+    // home_yaw = yaw;
 
-    std::cout << KYEL << "[main.cpp] Home Position : " << KNRM <<
-    home.pose.position.x << " " << home.pose.position.y << " " <<
-    home.pose.position.z << " " << home_yaw << std::endl;
+    // *** If takeoff is immediately sent, this will help to stream the correct data to the program first
+    // *** Will give a 5sec buffer ***
+    while (ros::Time::now() - last_request > ros::Duration(5.0))
+    {
 
+    }
+
+    home.pose.position.x = uav_global_pose.pose.position.x;
+    home.pose.position.y = uav_global_pose.pose.position.y;
+    home.pose.position.z = uav_global_pose.pose.position.z;
+
+    geometry_msgs::PoseStamped home_enu;
     //send a few setpoints before starting
     for (int i = 20; ros::ok() && i > 0; --i)
     {
-        local_pos_pub.publish(home);
+        // *** This uses ENU, obsolete since we use NWU ***
+        // local_pos_pub.publish(home);
+
+        // We must convert home from NWU to ENU
+        // home_enu = convert_global_nwu_to_enu(home);
+        // local_pos_pub.publish(home_enu);
+
+        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z), 
+        Vector3d(0,0,0), Vector3d(0,0,0), yaw_nwu);
+
         ros::spinOnce();
         rate.sleep();
     }
@@ -429,10 +500,26 @@ bool taskmaster::set_offboard()
                 last_request = ros::Time::now();
             }
         }
-        local_pos_pub.publish(home);
+
+        // *** This uses ENU, obsolete since we use NWU ***
+        // local_pos_pub.publish(home);
+
+        // We must convert home from NWU to ENU
+        // local_pos_pub.publish(home_enu);
+
+        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z), 
+        Vector3d(0,0,0), Vector3d(0,0,0), yaw_nwu);
+
         is_mode_ready = (uav_current_state.mode == "OFFBOARD") && uav_current_state.armed;
         ros::spinOnce();
         rate.sleep();
+
+        // std::cout << KGRN << "[task.h] home_yaw_nwu_yaw=" << KNRM <<
+        //     yaw_nwu << std::endl;
+        home_yaw = yaw_nwu;
+        // std::cout << KYEL << "[main.cpp] Home Position : " << KNRM <<
+        //     home.pose.position.x << " " << home.pose.position.y << " " <<
+        //     home.pose.position.z << " " << home_yaw << std::endl;
     }
 
     if (is_mode_ready)
@@ -463,19 +550,6 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 
     case kHover:
     {
-        // if (!task_complete && (ros::Time::now().toSec() - last_request_timer > 5.0))
-        // {
-        //     last_request_timer = ros::Time::now().toSec();
- 
-        //     printf("%s[main.cpp] Hovering @ ENU pos (%.2lf, %.2lf, %.2lf) last_mission_pos (%.2lf, %.2lf, %.2lf) \n", KBLU, 
-        //         uav_pose.pose.position.x, 
-        //         uav_pose.pose.position.y,
-        //         uav_pose.pose.position.z,
-        //         last_mission_pos.x(),
-        //         last_mission_pos.y(),
-        //         last_mission_pos.z());
-        // }
-
         if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
         {
             uavDesiredControlHandler(last_mission_pos, 
@@ -519,8 +593,15 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                     {
                         mission_type_count++;
                         printf("%s[main.cpp] Moving on to next mission, idx %d\n", KGRN, mission_type_count);
-                        TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+                        
+                        // *** This uses ENU, obsolete since we use NWU ***
+                        // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
+                        //     mission_wp[mission_type_count], kHover, kMission);
+                        
+                        TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+                            uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
                             mission_wp[mission_type_count], kHover, kMission);
+
                         // Don't break here, we have to return or else it will go through an empty bspline update
                         return;
                     }
@@ -536,7 +617,12 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                         break;
                     }
                     last_mission_pos = last_pos;
-                    last_mission_yaw = yaw;
+
+                    // *** This uses ENU, obsolete since we use NWU ***
+                    // last_mission_yaw = yaw;
+
+                    last_mission_yaw = yaw_nwu;
+
                     uav_task = kHover;
                     break;
                 }
@@ -553,8 +639,14 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                 if (ros::Time::now().toSec() - bypass_previous_message_time.toSec() > 1.0/2.0 - 0.01)
                 {
                     printf("%s[main.cpp] Reject Bypass Mode and move to Hover!\n", KRED);
-                    last_mission_pos = current_pos;
-                    last_mission_yaw = yaw;
+                    
+                    // *** This uses ENU, obsolete since we use NWU ***
+                    // last_mission_pos = current_pos;
+                    // last_mission_yaw = yaw;
+
+                    last_mission_pos = global_pos;
+                    last_mission_yaw = yaw_nwu;
+
                     uav_task = kHover;
                     break;
                 }

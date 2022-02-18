@@ -3,8 +3,7 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /Agent-Pose1
+      Expanded: ~
       Splitter Ratio: 0.5
     Tree Height: 278
   - Class: rviz/Selection
@@ -41,14 +40,14 @@ Visualization Manager:
       Line Style:
         Line Width: 0.029999999329447746
         Value: Lines
-      Name: Grid
+      Name: Grid-1m
       Normal Cell Count: 0
       Offset:
         X: 0
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 50
+      Plane Cell Count: 70
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
@@ -59,17 +58,63 @@ Visualization Manager:
       Enabled: true
       Head Length: 0.30000001192092896
       Head Radius: 0.10000000149011612
-      Name: Agent-Pose
+      Name: Agent_Pose_0
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /S0/global_pose
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.5
+      Axes Radius: 0.10000000149011612
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Agent_Pose_1
       Shaft Length: 1
       Shaft Radius: 0.05000000074505806
       Shape: Axes
       Topic: /S1/global_pose
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Axes Length: 0.5
+      Axes Radius: 0.10000000149011612
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Agent_Pose_2
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /S2/global_pose
+      Unreliable: false
+      Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /S1/px4_path_planner_visualization/cp_visualization_marker
-      Name: Marker
+      Marker Topic: /S0/px4_path_planner_visualization0/cp_visualization_marker
+      Name: Marker_S0
+      Namespaces:
+        bspline_visualization: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S1/px4_path_planner_visualization1/cp_visualization_marker
+      Name: Marker_S1
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S2/px4_path_planner_visualization2/cp_visualization_marker
+      Name: Marker_S2
       Namespaces:
         {}
       Queue Size: 100
@@ -102,25 +147,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 8.358563423156738
+      Distance: 10.30604362487793
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -1.1942481994628906
-        Y: 0.9979547262191772
+        X: -1.5905752182006836
+        Y: -0.3451724946498871
         Z: 1.8542550606071018e-6
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2197965383529663
+      Pitch: 0.22979655861854553
       Target Frame: <Fixed Frame>
       Value: ThirdPersonFollower (rviz)
-      Yaw: 3.1554782390594482
+      Yaw: 2.955479145050049
     Saved: ~
 Window Geometry:
   Displays:

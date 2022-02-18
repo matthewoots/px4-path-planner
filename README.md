@@ -17,18 +17,51 @@ Cubic spline library is not used and is replaced by a Custom Bspline Trajectory 
 
 - `trajectory_representation.ulg` has the full log for a test trajectory. This includes `takeoff`, `mission`, `home` and `landing`, which all uses the **Bspline** trajectory.
 
+## Setup
+**Step 1** Setup workspace
+```bash
+# cd to <your_ws>/src
+git clone https://github.com/matthewoots/px4-path-planner.git
+catkin build # at <your_ws>
+```
+**Step 2** Add to `devel/setup.bash`
+```bash
+SRC_DIR=<PX4-Autopilot-directory>
+BUILD_DIR=<PX4-Autopilot-directory>/build/px4_sitl_default
+
+# setup Gazebo env and update package path
+export GAZEBO_PLUGIN_PATH=$GAZEBO_PLUGIN_PATH:${BUILD_DIR}/build_gazebo
+export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:${SRC_DIR}/Tools/sitl_gazebo/models
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${BUILD_DIR}/build_gazebo
+
+echo -e "GAZEBO_PLUGIN_PATH $GAZEBO_PLUGIN_PATH"
+echo -e "GAZEBO_MODEL_PATH $GAZEBO_MODEL_PATH"
+echo -e "LD_LIBRARY_PATH $LD_LIBRARY_PATH"
+
+export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:$SRC_DIR:$SRC_DIR/Tools/sitl_gazebo
+echo $ROS_PACKAGE_PATH
+```
+And then source the file again, this will give you access to PX4-Autopilot launch files and Gazebo interface. You can refer to `setup_bash_file` for a sample
+
+**Step 3** Test launch
+```bash
+# To launch 1 agent
+roslaunch px4_path_planner main_visualization.launch
+# To launch 3 agents
+roslaunch px4_path_planner multi_sitl.launch
+```
+
 ## Notes
 0. Using Bspline Generic Recursive Representation by `K. Qin,General matrix representations forb-splines, Vis. Comput., 16 (2000),pp. 177–186.`
 
 1. Example of a csv file format in text that can be found in `path/wp0.csv`.
+    - `mode` represents `0. bypass` or `1. bspline` or `2. bspline_avoid` or `3. bspline_avoid_opt`
 ```csv
-xpos,ypos,zpos
-0,0,5
-0.2,0.8,5
-1,0.5,5
-1.5,1.0,5
-0.5,0.5,5
-0,0.0,5
+mode,xpos,ypos,zpos
+0,0,-3.0,1.3
+1,3,-3.0,1.3
+2,3,3.0,1.3
+3,-3.0,3,1.3
 ```
 **[Updated]** Trajectory generation has factored the `maximum velocity limits` into the calculation, hence `time` is taken out.
 
@@ -47,7 +80,7 @@ setpoint_raw_mode: true
 
 # Spline Parameters
 spline_order: 5
-control_points_division: 4
+control_points_division: 10
 trajectory_pub_rate: 20
 
 # Total number of Agents
@@ -55,8 +88,8 @@ unique_id_range: 20
 
 # Agent Parameters
 takeoff_height: 1.3
-common_max_vel: 1.0
-common_min_vel: 0.1
+common_max_vel: 1.5
+common_min_vel: 0.3
 ```
 
 ---

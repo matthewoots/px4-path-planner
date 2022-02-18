@@ -7,7 +7,6 @@ CATKIN_SHELL=bash
 _CATKIN_SETUP_DIR=$(builtin cd "`dirname "${BASH_SOURCE[0]}"`" > /dev/null && pwd)
 . "$_CATKIN_SETUP_DIR/setup.sh"
 
-
 SRC_DIR=~/PX4-Autopilot 
 BUILD_DIR=~/PX4-Autopilot/build/px4_sitl_default
 
