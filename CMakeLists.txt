@@ -20,8 +20,6 @@ find_package(catkin
 add_message_files(
   FILES
   Bspline.msg
-  leader_follower.msg
-  mission_phase.msg
   agent.msg
 )
 

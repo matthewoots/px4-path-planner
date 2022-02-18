@@ -49,17 +49,20 @@ namespace bs
     {
     private:
         int col;
+
+        double weight_smooth, weight_feas, weight_term; 
+        double weight_static, weight_reci, weight_keyp;
+        double max_acc;
+        double dt;
+
         MatrixXd global_control_points;
 
-
     public:
-        spline_opt_function(int col_,
-            MatrixXd global_control_points,
+        spline_opt_function(int col,
+            MatrixXd global_control_points, double dt,
             double weight_smooth, double weight_feas, double weight_term, 
             double weight_static, double weight_reci, double weight_keyp) 
-        {
-
-        }
+        {}
 
         double operator()(const MatrixXd& x, MatrixXd& grad)
         {
@@ -75,11 +78,18 @@ namespace bs
             //     fx += t1 * t1 + t2 * t2;
             // }
             smoothnessCost(x, &fx_smooth, &grad_smooth);
-            feasibilityCost(x, &fx_smooth, &grad_smooth);
-            terminalCost(x, &fx_smooth, &grad_smooth);
-            staticCollisionCost(x, &fx_smooth, &grad_smooth);
-            reciprocalAvoidanceCost(x, &fx_smooth, &grad_smooth);
-            keypointPenaltyCost(x, &fx_smooth, &grad_smooth);
+            feasibilityCost(x, &fx_feas, &grad_feas);
+            terminalCost(x, &fx_term, &grad_term);
+            staticCollisionCost(x, &fx_static, &grad_static);
+            reciprocalAvoidanceCost(x, &fx_reci, &grad_reci);
+            keypointPenaltyCost(x, &fx_keyp, &grad_keyp);
+
+            fx = weight_smooth * fx_smooth +
+                weight_feas * fx_feas +
+                weight_term * fx_term +
+                weight_static * fx_static +
+                weight_reci * fx_reci +
+                weight_keyp * fx_keyp;
 
             return fx;
         }
@@ -91,6 +101,45 @@ namespace bs
             * Minimizing the integral over the squared derivatives 
             * (smoothness) such as acceleration, jerk, snap.
             */
+            double cost = 0; 
+            *grad = MatrixXd::Zero(3,col);
+            MatrixXd gradient = MatrixXd::Zero(3,col);
+            MatrixXd cp = x;
+
+            /* 3rd derivative, Jerk */
+            for (int i = 0; i < cp.cols() - 3; i++)
+            {
+                Vector3d jerk = cp.col(i + 3) - 
+                    3 * cp.col(i + 2) + 
+                    3 * cp.col(i + 1) - 
+                    cp.col(i);
+
+                cost = cost + pow(jerk.norm(), 2);
+                Vector3d tmp_j = 2.0 * jerk;
+
+                gradient.col(i + 0) += (-tmp_j);
+                gradient.col(i + 1) += (3.0 * tmp_j);
+                gradient.col(i + 2) += (-3.0 * tmp_j);
+                gradient.col(i + 3) += (tmp_j);
+            }
+            
+            /* 2nd derivative, Acceleration */
+            for (int i = 0; i < cp.cols() - 2; i++)
+            {   
+                Vector3d acc = cp.col(i + 2) - 
+                    2 * cp.col(i + 1) + 
+                    cp.col(i);
+
+                cost = cost + pow(acc.norm(), 2);
+                Vector3d tmp_a = 2.0 * acc;
+                
+                gradient.col(i + 0) = (tmp_a);
+                gradient.col(i + 1) = (-2.0 * tmp_a);
+                gradient.col(i + 2) = (tmp_a);
+            }
+
+            *fx = cost;
+            *grad = gradient;
         }
 
         void feasibilityCost(MatrixXd x, 
@@ -100,6 +149,40 @@ namespace bs
             * Soft limit on the norm of time derivatives 
             * such as velocity, acceleration, jerk and snap.
             */
+            double ts_inv2 = 1 / dt / dt;
+            double cost = 0;
+            *grad = MatrixXd::Zero(3,col);
+            MatrixXd gradient = MatrixXd::Zero(3,col);
+            MatrixXd cp = x;
+
+            /* Check all instances with acceleration limit */
+            for (int i = 0; i < cp.cols() - 2; i++)
+            {
+                Vector3d ai = (cp.col(i + 2) - 2 * cp.col(i+1) + cp.col(i)) * ts_inv2;
+                for (int j = 0; j < 3; j++)
+                {
+                    if (ai(j) > max_acc)
+                    {
+                        cost += pow(ai(j) - max_acc, 2);
+
+                        gradient(j, i + 0) += 2 * (ai(j) - max_acc) * ts_inv2;
+                        gradient(j, i + 1) += (-4 * (ai(j) - max_acc) * ts_inv2);
+                        gradient(j, i + 2) += 2 * (ai(j) - max_acc) * ts_inv2;
+                    }
+                    else if (ai(j) < -max_acc)
+                    {
+                        cost += pow(ai(j) + max_acc, 2);
+
+                        gradient(j, i + 0) += 2 * (ai(j) + max_acc) * ts_inv2;
+                        gradient(j, i + 1) += (-4 * (ai(j) + max_acc) * ts_inv2);
+                        gradient(j, i + 2) += 2 * (ai(j) + max_acc) * ts_inv2;
+                    }
+                    else {}
+                }
+            }
+
+            *fx = cost;
+            *grad = gradient;
         }
 
         void terminalCost(MatrixXd x, 
@@ -139,9 +222,12 @@ namespace bs
 
     class bspline_optimization
     {
+        private:
+        double dt;
+
         public:
 
-        void solver(MatrixXd spline, MatrixXd g_spline)
+        void solver(MatrixXd spline, MatrixXd g_spline, double dt)
         {
             // Set up parameters
             LBFGSBParam<double> param;  // New parameter class
@@ -150,8 +236,28 @@ namespace bs
 
             // Create solver and function object
             LBFGSBSolver<double> solver(param);  // New solver class
-            spline_opt_function opt(spline.cols(), g_spline,
+            spline_opt_function opt(spline.cols(), g_spline, dt,
                 0.1, 0.1, 0.1, 0.1, 0.1, 0.1);
+
+            // To get the bound we have to pass through the search algorithm
+            // Get the safe corridor for each control point
+            // Add the bound contrains to the optimizer
+            // In this case we may not need (static avoidance in optimizer = More efficient)
+
+            // Bounds
+            // VectorXd lb = VectorXd::Constant(n, 2.0);
+            // VectorXd ub = VectorXd::Constant(n, 4.0);
+
+            // Initial guess
+            // VectorXd x = VectorXd::Constant(n, 3.0);
+
+            // x will be overwritten to be the best point found
+            double fx;
+            // int niter = solver.minimize(fun, x, fx, lb, ub);
+
+            // std::cout << niter << " iterations" << std::endl;
+            // std::cout << "x = \n" << x.transpose() << std::endl;
+            // std::cout << "f(x) = " << fx << std::endl;
         }
                 
     };

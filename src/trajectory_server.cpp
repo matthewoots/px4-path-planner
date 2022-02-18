@@ -58,6 +58,7 @@ void trajectory::SetClampedPath(MatrixXd wp,
     _fixed_cp = MatrixXd::Zero(3,_global_cp.cols());
     _fixed_cp = _global_cp;
     _start = ros::Time::now().toSec();
+    std::cout << KYEL << "[trajectory_server.cpp] " << "Start time in sec : " << KNRM << _start << std::endl;
     _end = _start + ((_fixed_cp.cols() - (_order)) * _knot_span);
     MatrixXd _fixed_knots_tmp = _bsp.linspace(_start, _end, (double)(_global_cp.cols() - (_order-1)));
     _fixed_knots = VectorXd::Zero(_fixed_knots_tmp.cols());

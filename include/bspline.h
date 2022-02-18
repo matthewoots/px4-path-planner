@@ -70,7 +70,7 @@ namespace bs
                 diff_tmp = keypoints.col(j+1) - keypoints.col(j);
                 diff(j) = sqrt(pow(diff_tmp[0],2) + pow(diff_tmp[1],2) + pow(diff_tmp[2],2));
             }
-            std::cout << KRED << "[Length of Segment]:\n" << KNRM << diff << std::endl;
+            // std::cout << KRED << "[Length of Segment]:\n" << KNRM << diff << std::endl;
 
             double total_dist = diff.sum();
             double est_dist_knot = max_vel * knot_span;
@@ -89,8 +89,8 @@ namespace bs
                 time_waypoint_tmp(j) = total_segment * knot_span;
             }
             *time_waypoint = time_waypoint_tmp;
-            std::cout << KRED << "[Time to Waypoint]:\n" << KNRM << *time_waypoint << std::endl;
-            std::cout << KRED << "[Segment Count]:\n" << KNRM << segment << std::endl;
+            // std::cout << KRED << "[Time to Waypoint]:\n" << KNRM << *time_waypoint << std::endl;
+            // std::cout << KRED << "[Segment Count]:\n" << KNRM << segment << std::endl;
 
             // Raw control points
             // total_segment + 1 is the total count since + 1 refers to the last missing point after linspace
@@ -103,7 +103,7 @@ namespace bs
                 {
                     double div = segment(j) + 1.0;
                     MatrixXd sub_cp_tmp = linspace(keypoints(i,j), keypoints(i,j+1), div);
-                    std::cout << KRED << "[sub_cp_tmp] " << j << ":\n" << KNRM << sub_cp_tmp << std::endl;
+                    // std::cout << KRED << "[sub_cp_tmp] " << j << ":\n" << KNRM << sub_cp_tmp << std::endl;
                     for (int k = 0; k < segment(j); k++)
                     {
                         cp_raw_tmp(i,k + segment_counter) = sub_cp_tmp(0,k);

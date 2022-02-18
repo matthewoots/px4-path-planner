@@ -51,17 +51,17 @@
 #include <mavros_msgs/PositionTarget.h>
 #include <mavros_msgs/CommandTOL.h> 
 
-#include <sensor_msgs/NavSatFix.h>
-#include <mavros_msgs/HomePosition.h>
 #include <std_msgs/Byte.h>
 
 #include "px4_path_planner/Bspline.h"
-#include "px4_path_planner/agent.h"
 
 #include <tf/tf.h>
 
 #include <trajectory.h>
-#include <formation.h>
+
+#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 using namespace Eigen;
 using namespace std;
@@ -83,20 +83,23 @@ enum VehicleTask
     kLand
 };
 
+enum MissionMode
+{
+    bypass,
+    bspline,
+    bspline_avoid,
+    bspline_avoid_opt
+};
+
 class taskmaster
 {
 private:
     ros::NodeHandle _nh;
 
     ros::Subscriber state_sub;
-    ros::Subscriber uav_gps_cur_sub;
-    ros::Subscriber uav_gps_home_sub;
     ros::Subscriber uav_pose_sub;
     ros::Subscriber uav_vel_sub;
     ros::Subscriber uav_cmd_sub;
-    
-    // Use in global missions for swarm
-    ros::Subscriber global_agent_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
@@ -110,7 +113,6 @@ private:
 
     bool _initialised;
     bool _setpoint_raw_mode;
-    bool _global_planning; // In other words, swarm
     bool takeoff_flag; // Whether the agent has taken off
     bool task_complete; // When task is complete
 
@@ -131,14 +133,9 @@ private:
     int _order;
     int _control_points_division;
 
-    vector<int> uav_id;
+    bool _bypass = false;
 
-    // Use in global missions for swarm
-    geometry_msgs::Point global_offset;
-    geometry_msgs::Point leader_pose;
-    float leader_yaw;
-    pair<bool, bool> lf_data;
-    pair<int, bool> mp_data;
+    vector<int> uav_id;
     
     std::string _wp_file_location;
     std::string _id;
@@ -146,19 +143,34 @@ private:
     mavros_msgs::CommandBool arm_cmd;
 
     Vector3d takeoff_pos;
+
     Vector3d current_pos;
+    Vector3d global_pos;
+    Vector3d global_offset;
+
     Vector3d current_vel;
     Vector3d last_mission_pos;
 
-    mavros_msgs::HomePosition uav_gps_home;
     mavros_msgs::State uav_current_state;
-    sensor_msgs::NavSatFix uav_gps_cur;
+
+    // In ENU without global offset just local position
     geometry_msgs::PoseStamped uav_pose;
-    geometry_msgs::PoseStamped uav_global_pose;
+
+    // In NWU and with offset
+    geometry_msgs::PoseStamped uav_global_pose; 
+    
     geometry_msgs::PoseStamped home;
     geometry_msgs::TwistStamped uav_vel;
 
+    mavros_msgs::PositionTarget bypass_sp;
+
     trajectory traj;
+
+    vector<int> mission_mode_vector;
+    vector<int> mission_mode;  
+    vector<MatrixXd> mission_wp;
+    int mission_type_count;
+    ros::Time bypass_previous_message_time;
 
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
@@ -184,48 +196,19 @@ public:
         }
     }
 
+    const std::string MissionModeToString(int v)
+    {
+        switch (v)
+        {
+            case bypass:   return "BYPASS";
+            case bspline:   return "BSPLINE";
+            case bspline_avoid: return "BSPLINE_AVOID";
+            case bspline_avoid_opt:   return "BSPLINE_AVOID_OPT";
+            default:      return "[Unknown Mode]";
+        }
+    }
+
     void uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg);
-
-    void gpsHomeCallback(const mavros_msgs::HomePosition::ConstPtr &msg)
-    {
-        uav_gps_home = *msg;
-    }
-    void gpsCurrentCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
-    {
-        uav_gps_cur = *msg;
-    }
-
-    void globalAgentsCallBack(const px4_path_planner::agent::ConstPtr &msg)
-    {
-        px4_path_planner::agent global_agent = *msg;
-        uav_global_pose = global_agent.global_position;
-        global_offset = global_agent.global_offset;
-
-        /*
-        * The global planner must construct must contruct 
-        */
-
-        /* 
-        * Check whether to activate leader_follower mode 
-        * 1. use_leader_follower & 2. is either leader_or_follower
-        */
-        lf_data.first = global_agent.lf.use_leader_follower;
-        lf_data.second = global_agent.lf.leader_or_follower;
-
-        /* 
-        * Check which mission phase we are currently on now
-        * This is only if [mission] have several phases
-        * 1. mission_code & 2. completed the sub mission
-        */
-        mp_data.first = global_agent.mp.mission_code;
-        mp_data.second = global_agent.mp.completed;
-
-        /*
-        * Leader pose should be broadcasted and saved this is decided by higher command
-        */
-        leader_pose = global_agent.leader_global_pose;
-        leader_yaw = global_agent.leader_global_yaw;
-    }
     
     /** @brief Get current uav FCU state */
     void uavStateCallBack(const mavros_msgs::State::ConstPtr &msg)
@@ -248,6 +231,7 @@ public:
     /** @brief Get current uav pose */
     void uavPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     {
+        // Local in ENU frame
         uav_pose = *msg;
         current_pos.x() = (double)uav_pose.pose.position.x;
         current_pos.y() = (double)uav_pose.pose.position.y;
@@ -258,6 +242,25 @@ public:
             uav_pose.pose.orientation.z, uav_pose.pose.orientation.w);
         tf::Matrix3x3 m(q);
         m.getRPY(roll, pitch, yaw);
+
+        // Convert from ENU to NWU
+        geometry_msgs::PoseStamped nwu_tmp = transform_pose_stamped(uav_pose, Vector3d(0,0,90.0));
+        nwu_tmp.pose.position.x += global_offset.x();
+        nwu_tmp.pose.position.x += global_offset.y();
+        nwu_tmp.pose.position.x += global_offset.z();
+
+        uav_global_pose = nwu_tmp;
+
+        // Global in NWU frame
+        global_pos.x() = (double)nwu_tmp.pose.position.x;
+        global_pos.y() = (double)nwu_tmp.pose.position.y;
+        global_pos.z() = (double)nwu_tmp.pose.position.z;
+    }
+
+    /** @brief Get bypass command message */
+    void bypassCommandCallback(const  mavros_msgs::PositionTarget::ConstPtr &msg)
+    {
+        bypass_sp = *msg;
     }
 
     /** @brief Send Desired Command to PX4 via Mavros (Using Vector3d)*/
@@ -308,38 +311,40 @@ public:
         }
     }
 
-    bool UnpackWaypoint(MatrixXd *_waypoint, string _file_location)
+    bool UnpackWaypoint(vector<int> *_mission_mode, MatrixXd *_waypoint, string _file_location)
     {
-        printf("%s[main.h] Trying to open %s \n", KYEL, _file_location.c_str());
+        printf("%s[task.h] Trying to open %s \n", KYEL, _file_location.c_str());
         ifstream file(_file_location);
         
         if (!file)
         {
-            printf("%s[main.h] File not present! \n", KRED);
+            printf("%s[task.h] File not present! \n", KRED);
             return false;
         }
-        printf("%s[main.h] Success, found %s \n", KGRN, _file_location.c_str());
+        printf("%s[task.h] Success, found %s \n", KGRN, _file_location.c_str());
 
-        io::CSVReader<3> in(_file_location);
-        in.read_header(io::ignore_extra_column, "xpos", "ypos", "zpos");
-        double xpos; double ypos; double zpos;
-        std::vector<double> x; std::vector<double> y; std::vector<double> z;
+        io::CSVReader<4> in(_file_location);
+        in.read_header(io::ignore_extra_column, "mode", "xpos", "ypos", "zpos");
+        int mission_mode; double xpos; double ypos; double zpos;
+        std::vector<int> mm; std::vector<double> x; std::vector<double> y; std::vector<double> z;
         int total_row = 0;
         // First pass is to get number of rows
-        while (in.read_row(xpos, ypos, zpos)){
+        while (in.read_row(mission_mode, xpos, ypos, zpos)){
             total_row++;
+            mm.push_back (mission_mode); 
             x.push_back (xpos); y.push_back (ypos); z.push_back (zpos);
-            std::cout << KBLU << "[main.cpp] " << "[Unpack Waypoint] " << KNRM << xpos << " " << ypos << " " << zpos << std::endl;
+            std::cout << KBLU << "[task.cpp] " << "[Unpack Waypoint] " << KNRM << " " << mission_mode << " " << xpos << " " << ypos << " " << zpos << std::endl;
         }
         MatrixXd waypoint = MatrixXd::Zero(3, total_row);
         *_waypoint = MatrixXd::Zero(3, total_row);
-        for (int i = 0; i < x.size(); i++)
+        for (int i = 0; i < total_row; i++)
         {
             waypoint(0,i) = x[i]; 
             waypoint(1,i) = y[i]; 
             waypoint(2,i) = z[i];
         }
         *_waypoint = waypoint;
+        *_mission_mode = mm;
 
         return true;
     }
@@ -361,7 +366,7 @@ public:
             start_pose); 
         if (!traj.UpdateFullPath())
         {
-            printf("%s[main.cpp] TrajectoryGeneration fail to set path \n", KRED);
+            printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);
             taskmaster::uav_task = _default;
             return;
         }
@@ -370,13 +375,14 @@ public:
         return;
     }
 
+    // Used for everything except mission
     void PublishDesiredControl(Vector3d final_pose, int _finished_task)
     {
         double last_timer = taskmaster::last_request_timer;
         double interval = taskmaster::_send_desired_interval;
         if (!taskmaster::task_complete && (ros::Time::now().toSec() - last_timer > interval))
         {
-            std::cout << KYEL << "[main.cpp] Trajectory_Time_Delay " << KNRM << (ros::Time::now().toSec() - last_timer) - (interval) << std::endl;
+            // std::cout << KYEL << "[main.cpp] Trajectory_Time_Delay " << KNRM << (ros::Time::now().toSec() - last_timer) - (interval) << std::endl;
             
             double fact = floor((ros::Time::now().toSec() - traj.GetStartTime()) / interval);
 
@@ -384,7 +390,7 @@ public:
             
             if (traj.isCompleted(ros::Time::now().toSec()))
             {
-                printf("%s[main.cpp] %s Complete \n", KGRN, TaskToString(taskmaster::uav_task).c_str());
+                printf("%s[task.h] %s Complete \n", KGRN, TaskToString(taskmaster::uav_task).c_str());
                 taskmaster::task_complete = true;
                 taskmaster::last_mission_pos = final_pose;
                 taskmaster::last_mission_yaw = taskmaster::yaw;
@@ -398,10 +404,12 @@ public:
             return;
         }
 
-        Vector3d pos; Vector3d vel; Vector3d acc; double _calculated_yaw = taskmaster::home_yaw;
+        Vector3d pos; Vector3d vel; Vector3d acc; 
+        // double _calculated_yaw = taskmaster::home_yaw;
+        double _calculated_yaw = yaw;
         if (!traj.GetDesiredState(taskmaster::last_request_timer, &pos, &vel, &acc))
         {
-            printf("%s[main.cpp] %s Desired State Error \n", KRED, TaskToString(taskmaster::uav_task).c_str());
+            printf("%s[task.h] %s Desired State Error \n", KRED, TaskToString(taskmaster::uav_task).c_str());
             return;
         }
 
@@ -412,7 +420,7 @@ public:
 
     void PublishBspline()
     {
-        // printf("%s[main.cpp] Publishing Bspline \n", KGRN);
+        // printf("%s[task.h] Publishing Bspline \n", KGRN);
         px4_path_planner::Bspline bspline;
         bspline.order = traj.GetOrder();
         bspline.knot_division = traj.GetKnotDivision();
@@ -420,7 +428,7 @@ public:
         MatrixXd gcp = MatrixXd (traj.GetGlobalControlPoints());
         VectorXd knots = VectorXd (traj.GetKnots());
 
-        // printf("%s[main.cpp] Publishing gcp \n", KGRN);
+        // printf("%s[task.h] Publishing gcp \n", KGRN);
         bspline.global_control_points.reserve(gcp.cols());
 
         for (int i = 0; i < gcp.cols(); i++)
@@ -443,6 +451,36 @@ public:
 
         bspline_pub.publish(bspline);
         return;
+    }
+
+    /* 
+    * @brief Transform PoseStamped according to the translation and rpy given
+    */
+    geometry_msgs::PoseStamped transform_pose_stamped(geometry_msgs::PoseStamped _p, Vector3d _rpy)
+    {
+        geometry_msgs::PoseStamped poseStamped;
+
+        geometry_msgs::TransformStamped transform;
+        geometry_msgs::Quaternion q; geometry_msgs::Vector3 t;
+        tf2::Quaternion quat_tf;
+
+        t.x = 0; t.y = 0; t.z = 0; 
+
+        double deg2rad = 1.0 / 180.0 * 3.1415926535;
+
+        quat_tf.setRPY(_rpy.x() * deg2rad, 
+            _rpy.y() * deg2rad, 
+            _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+        q = tf2::toMsg(quat_tf);
+
+        transform.transform.translation = t;
+        transform.transform.rotation = q;
+        transform.child_frame_id = "/base";
+        transform.header.frame_id = "/map";
+
+        tf2::doTransform(_p, poseStamped, transform);
+
+        return poseStamped;
     }
 
 };

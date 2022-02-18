@@ -1,2 +1,0 @@
-bool use_leader_follower
-bool leader_or_follower

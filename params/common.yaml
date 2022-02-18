@@ -1,6 +1,5 @@
 # Command Parameters
 setpoint_raw_mode: true
-global_planning: true
 
 # Spline Parameters
 spline_order: 5
@@ -14,3 +13,8 @@ unique_id_range: 20
 takeoff_height: 1.3
 common_max_vel: 1.5
 common_min_vel: 0.2
+
+# Global Parameters
+nwu_offset_x: 0
+nwu_offset_y: 0
+nwu_offset_z: 0
