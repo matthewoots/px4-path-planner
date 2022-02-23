@@ -100,8 +100,8 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     /** 
     * @brief Handles mission from user command, handles through enum values
     */
-    uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
-        "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);
+    // uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
+    //     "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);
     /** 
     * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
     */
@@ -191,9 +191,9 @@ void taskmaster::initialisation()
     return;
 }
 
-void taskmaster::uavCommandCallBack(const std_msgs::Byte::ConstPtr &msg)
+void taskmaster::uavCommandCallBack(int msg)
 {
-    int idx = msg->data;
+    int idx = msg;
     printf("%s[main.cpp] User command %d received \n", KBLU, idx);
     int tries = 0;
     ros::Time last_request = ros::Time::now();
@@ -680,12 +680,13 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
             {
                 // If Mission is in bypass we just use time
                 last_request_timer = ros::Time::now().toSec();
-                printf("%s[main.cpp] Bypass Mode activated!\n", KRED);
+                // printf("%s[main.cpp] Bypass Mode activated!\n", KRED);
                 // If bypass_message callback shows long delay, we will return to hover
                 // The vehicle will exit the mode if target setpoints are not received at a rate of > 2Hz
                 if (ros::Time::now().toSec() - bypass_previous_message_time.toSec() > 1.0/2.0 - 0.01)
                 {
                     printf("%s[main.cpp] Reject Bypass Mode and move to Hover!\n", KRED);
+                    printf("%s[main.cpp] Latency %lf!\n", KRED, ros::Time::now().toSec() - bypass_previous_message_time.toSec());
                     
                     // *** This uses ENU, obsolete since we use NWU ***
                     // last_mission_pos = current_pos;
