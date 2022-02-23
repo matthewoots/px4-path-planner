@@ -52,6 +52,7 @@
 #include <mavros_msgs/CommandTOL.h> 
 
 #include <std_msgs/Byte.h>
+#include <std_msgs/Float32MultiArray.h>
 
 #include "px4_path_planner/Bspline.h"
 
@@ -96,16 +97,13 @@ class taskmaster
 private:
     ros::NodeHandle _nh;
 
-    ros::Subscriber state_sub;
-    ros::Subscriber uav_pose_sub;
-    ros::Subscriber uav_vel_sub;
-    ros::Subscriber uav_cmd_sub;
+    ros::Subscriber state_sub, uav_pose_sub, uav_vel_sub, uav_cmd_sub;
+    ros::Subscriber mission_msg_sub, bypass_msg_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
 
-    ros::Publisher bspline_pub;
-    ros::Publisher global_pos_pub;
+    ros::Publisher bspline_pub, global_pos_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
@@ -136,6 +134,7 @@ private:
     int _control_points_division;
 
     bool _bypass = false;
+    bool _unpack_from_local_file;
 
     vector<int> uav_id;
     
@@ -172,7 +171,9 @@ private:
     vector<int> mission_mode;  
     vector<MatrixXd> mission_wp;
     int mission_type_count;
+
     ros::Time bypass_previous_message_time;
+    ros::Time mission_previous_message_time;
 
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
@@ -270,6 +271,79 @@ public:
     void bypassCommandCallback(const  mavros_msgs::PositionTarget::ConstPtr &msg)
     {
         bypass_sp = *msg;
+        bypass_previous_message_time = bypass_sp.header.stamp;
+    }
+
+    /** @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint */
+    void uavMissionMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
+    {
+        mission_previous_message_time = ros::Time::now();
+
+        mission_wp.clear();
+        mission_mode_vector.clear();
+        mission_mode.clear();
+
+        MatrixXd wp;
+        std_msgs::Float32MultiArray multi_array = *msg;
+        int size = multi_array.data.size();
+        int idx = size / 4;
+        wp = MatrixXd::Zero(3, idx);
+        for (int i = 0; i < idx; i++)
+        {
+            mission_mode_vector.push_back((int)multi_array.data[4*i+0]);
+
+            wp(0,i) = multi_array.data[4*i+1];
+            wp(1,i) = multi_array.data[4*i+2];
+            wp(2,i) = multi_array.data[4*i+3];
+        }
+        std::cout << KBLU << "[task.h] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
+        printf("%s[task.h] Total Mission size %lu with mode size %lu waypoints! \n", KBLU, 
+            wp.size(), mission_mode_vector.size());
+        
+        // Mission changes counts how many waypoints belong to the mission mode
+        // Counts in series/sequentially 
+        vector<int> mission_changes; 
+        int mission_mode_count = 0;
+        // We check to see whether is there any changes in mission mode throughout our mission
+        for (int j = 0; j < mission_mode_vector.size(); j++)
+        {
+            mission_mode_count++;
+
+            // Put the rest of the points at the last point
+            if (j == mission_mode_vector.size() - 1)
+            {
+                mission_mode.push_back(mission_mode_vector[j]); 
+                mission_changes.push_back(mission_mode_count);
+                printf("%s[main.cpp] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                    mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+                
+                continue;
+            }
+
+            // Mission Mode at j check to see whether is it the same as the previous
+            // if not we segment it
+            if (mission_mode_vector[j] != mission_mode_vector[j+1])
+            {
+                mission_mode.push_back(mission_mode_vector[j]); 
+                mission_changes.push_back(mission_mode_count);
+                printf("%s[main.cpp] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                    mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+                mission_mode_count = 0;
+                continue;
+            }
+            
+        }            
+
+        // Adder is just to push back the points that we start from when we do the Matrix block process
+        // To fill in the mission wp
+        int adder = 0;
+        // Segment mission_wp into wp
+        for (int j = 0; j < mission_changes.size(); j++)
+        {
+            mission_wp.push_back(wp.block(0,adder,3,mission_changes[j])); 
+            adder += mission_changes[j];
+        }
+        printf("%s[main.cpp] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
     }
 
     /** @brief Send Desired Command to PX4 via Mavros (Using Vector3d)*/

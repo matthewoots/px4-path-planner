@@ -3,8 +3,7 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /Agent-Pose1
+      Expanded: ~
       Splitter Ratio: 0.5
     Tree Height: 278
   - Class: rviz/Selection
@@ -69,9 +68,17 @@ Visualization Manager:
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /S1/px4_path_planner_visualization/cp_visualization_marker
-      Name: Marker
+      Name: Bspline Marker
       Namespaces:
         {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S1/px4_path_planner_visualization/gp_visualization_marker
+      Name: Agent ID
+      Namespaces:
+        pose_visualization_points: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -109,9 +116,9 @@ Visualization Manager:
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -1.1942481994628906
-        Y: 0.9979547262191772
-        Z: 1.8542550606071018e-6
+        X: -3.0857467651367188
+        Y: -0.0569988489151001
+        Z: 2.8079293770133518e-6
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

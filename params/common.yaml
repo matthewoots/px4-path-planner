@@ -1,5 +1,6 @@
 # Command Parameters
 setpoint_raw_mode: true
+unpack_from_local_file: false
 
 # Spline Parameters
 spline_order: 5

@@ -108,7 +108,7 @@ Visualization Manager:
       Marker Topic: /S1/px4_path_planner_visualization1/cp_visualization_marker
       Name: Marker_S1
       Namespaces:
-        {}
+        bspline_visualization: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -117,6 +117,22 @@ Visualization Manager:
       Name: Marker_S2
       Namespaces:
         {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S1/px4_path_planner_visualization1/gp_visualization_marker
+      Name: S1_Name
+      Namespaces:
+        pose_visualization_points: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S0/px4_path_planner_visualization0/gp_visualization_marker
+      Name: S0_Name
+      Namespaces:
+        pose_visualization_points: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -162,10 +178,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.22979655861854553
+      Pitch: 0.20979656279087067
       Target Frame: <Fixed Frame>
       Value: ThirdPersonFollower (rviz)
-      Yaw: 2.955479145050049
+      Yaw: 2.6854779720306396
     Saved: ~
 Window Geometry:
   Displays:

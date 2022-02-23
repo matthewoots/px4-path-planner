@@ -39,19 +39,20 @@
 #include <visualization_msgs/MarkerArray.h>
 
 #include <geometry_msgs/Point.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include "px4_path_planner/Bspline.h"
 
 using namespace std;
 using namespace Eigen;
 
-px4_path_planner::Bspline bs;
-ros::Publisher cp_marker_pub;
-ros::Subscriber bspline;
+ros::Publisher cp_marker_pub, global_pose_pub;
+ros::Subscriber bspline_sub, global_sub;
+std::string _id; 
 
 void bsplineCallback(const px4_path_planner::Bspline::ConstPtr &msg)
 {
-  bs = *msg;
+  px4_path_planner::Bspline bs = *msg;
 
   visualization_msgs::Marker control_points, line_strip, line_list;
   control_points.header.frame_id = line_strip.header.frame_id = "/map";
@@ -82,7 +83,7 @@ void bsplineCallback(const px4_path_planner::Bspline::ConstPtr &msg)
   line_strip.color.r = 1.0;
   line_strip.color.a = 1.0;
 
-  bsplineCallback;
+  // bsplineCallback;
   int cp_size = bs.global_control_points.size();
   geometry_msgs::Point cp_vector[cp_size];
   // std::cout << KYEL << "[bspline_visualization.cpp] cp_size \n" << KNRM << cp_size << std::endl;
@@ -104,19 +105,53 @@ void bsplineCallback(const px4_path_planner::Bspline::ConstPtr &msg)
   cp_marker_pub.publish(line_strip);
 }
 
+void globalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
+{
+  geometry_msgs::PoseStamped pose_msg = *msg;
+  
+  visualization_msgs::Marker text_points;
+  text_points.header.frame_id = "/map";
+  text_points.header.stamp = ros::Time::now();
+  text_points.ns = "pose_visualization_points";
+  text_points.action = visualization_msgs::Marker::ADD;
+  text_points.pose.orientation.w = 1.0;
+
+  text_points.id = 0;
+
+  text_points.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+
+  text_points.scale.z = 0.3;
+  text_points.color.r = 0.0f;
+  text_points.color.g = 0.0f;
+  text_points.color.b = 1.0f;
+  text_points.color.a = 0.8f;
+
+  text_points.pose.position = pose_msg.pose.position;
+  text_points.pose.position.z += 1.0;
+
+  text_points.text = _id;
+  
+  global_pose_pub.publish(text_points);
+}
+
 int main( int argc, char** argv )
 {
   double rate = 1.0;
-  std::string _id;  
+   
   ros::init(argc, argv, "bspline_visualization");
   ros::NodeHandle n("~");
   
-  n.param<std::string>("agent_id", _id, "S1");
+  n.param<std::string>("agent_id", _id, "S0");
 
   cp_marker_pub = n.advertise<visualization_msgs::Marker>(
         "cp_visualization_marker", 10);
-  bspline = n.subscribe<px4_path_planner::Bspline>(
+  global_pose_pub = n.advertise<visualization_msgs::Marker>(
+        "gp_visualization_marker", 10);
+
+  bspline_sub = n.subscribe<px4_path_planner::Bspline>(
         "/" + _id + "/path/bspline", 10, &bsplineCallback);
+  global_sub = n.subscribe<geometry_msgs::PoseStamped>(
+        "/" + _id + "/global_pose", 10, &globalPoseCallback);
 
   ros::Rate r(rate);
 
