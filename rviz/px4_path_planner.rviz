@@ -24,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: PointCloud2
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -40,14 +40,32 @@ Visualization Manager:
       Line Style:
         Line Width: 0.029999999329447746
         Value: Lines
-      Name: Grid
+      Name: 1m-Grid
       Normal Cell Count: 0
       Offset:
         X: 0
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 50
+      Plane Cell Count: 100
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Alpha: 0.5
+      Cell Size: 10
+      Class: rviz/Grid
+      Color: 164; 0; 0
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: 10m-Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
@@ -62,12 +80,12 @@ Visualization Manager:
       Shaft Length: 1
       Shaft Radius: 0.05000000074505806
       Shape: Axes
-      Topic: /S1/global_pose
+      Topic: /S0/global_pose
       Unreliable: false
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /S1/px4_path_planner_visualization/cp_visualization_marker
+      Marker Topic: /S0/px4_path_planner_visualization/cp_visualization_marker
       Name: Bspline Marker
       Namespaces:
         {}
@@ -75,11 +93,39 @@ Visualization Manager:
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /S1/px4_path_planner_visualization/gp_visualization_marker
+      Marker Topic: /S0/px4_path_planner_visualization/gp_visualization_marker
       Name: Agent ID
       Namespaces:
         pose_visualization_points: true
       Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 164; 0; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 164; 0; 0
+      Min Color: 0; 0; 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05000000074505806
+      Style: Flat Squares
+      Topic: /cloud_pcd
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
       Value: true
   Enabled: true
   Global Options:
@@ -109,25 +155,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 8.358563423156738
+      Distance: 8.457744598388672
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -3.0857467651367188
-        Y: -0.0569988489151001
-        Z: 2.8079293770133518e-6
+        X: -0.4543309211730957
+        Y: -0.9932732582092285
+        Z: 3.6193123378325254e-6
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2197965383529663
+      Pitch: 0.3847964406013489
       Target Frame: <Fixed Frame>
       Value: ThirdPersonFollower (rviz)
-      Yaw: 3.1554782390594482
+      Yaw: 3.1204798221588135
     Saved: ~
 Window Geometry:
   Displays:

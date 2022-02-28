@@ -21,6 +21,8 @@
  * 
  * 
  */
+#ifndef BSPLINE_H
+#define BSPLINE_H
 
 #include <iostream>
 #include <string>
@@ -393,3 +395,5 @@ namespace bs
     };
     
 }
+
+#endif

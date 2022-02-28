@@ -13,6 +13,10 @@ find_package(catkin
   std_msgs
   common_msgs
   tf
+  tf2_ros
+  tf2_sensor_msgs
+  pcl
+  pcl_ros
   message_generation
 )
 
@@ -43,6 +47,8 @@ catkin_package(
   std_msgs 
   common_msgs
   tf
+  tf2_ros
+  pcl
   
   DEPENDS
   Eigen3

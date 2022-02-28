@@ -21,6 +21,10 @@
  * 
  * 
  */
+
+#ifndef TRAJECTORY_H
+#define TRAJECTORY_H
+
 #include <string>
 #include <sstream>
 #include <fstream>
@@ -32,6 +36,7 @@
 #include <tf/tf.h>
 
 #include <bspline.h>
+#pragma once
 #include <bspline_optimization.h>
 #include <csv.h>
 
@@ -128,3 +133,5 @@ public:
     int returnFixedCPColumn(){return _fixed_cp.cols();};
 
 };
+
+#endif

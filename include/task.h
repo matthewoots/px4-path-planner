@@ -35,6 +35,8 @@
 // 512	POSITION_TARGET_TYPEMASK_FORCE_SET	Use force instead of acceleration
 // 1024	POSITION_TARGET_TYPEMASK_YAW_IGNORE	Ignore yaw
 // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
+#ifndef TASK_H
+#define TASK_H
 
 #include <string>
 #include <sstream>
@@ -59,6 +61,7 @@
 #include <tf/tf.h>
 
 #include <trajectory.h>
+#include <rrt.h>
 
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -98,7 +101,7 @@ private:
     ros::NodeHandle _nh;
 
     ros::Subscriber state_sub, uav_pose_sub, uav_vel_sub, uav_cmd_sub;
-    ros::Subscriber mission_msg_sub, bypass_msg_sub;
+    ros::Subscriber mission_msg_sub, bypass_msg_sub, pcl2_msg_sub, no_fly_zone_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
@@ -135,11 +138,17 @@ private:
 
     bool _bypass = false;
     bool _unpack_from_local_file;
+    bool loaded_pcl = false;
+
+    bool formation_mission_mode = false;
+    vector<VectorXd> no_fly_zone;
 
     vector<int> uav_id;
     
     std::string _wp_file_location;
     std::string _id;
+    std::string _package_directory;
+    std::string _params_directory;
 
     mavros_msgs::CommandBool arm_cmd;
 
@@ -166,6 +175,9 @@ private:
     mavros_msgs::PositionTarget bypass_sp;
 
     trajectory traj;
+
+    sensor_msgs::PointCloud2 pcl_pc2;
+    int pcl_count;
 
     vector<int> mission_mode_vector;
     vector<int> mission_mode;  
@@ -274,6 +286,45 @@ public:
 
     void uavCommandCallBack(int msg);
 
+    /** @brief Handles no fly zone float64 array 1D x_min, x_max, y_min, y_max */
+    void noFlyZoneMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
+    {
+        std_msgs::Float32MultiArray multi_array = *msg;
+        int size = multi_array.data.size();
+        int idx = size / 4;
+        
+        for (int i = 0; i < idx; i++)
+        {
+            VectorXd no_fly_zone_single = VectorXd::Zero(4);
+            no_fly_zone_single[0] = multi_array.data[4*i+0];
+            no_fly_zone_single[1] = multi_array.data[4*i+1];
+            no_fly_zone_single[2] = multi_array.data[4*i+2];
+            no_fly_zone_single[3] = multi_array.data[4*i+3];
+            printf("%s[task.h] %d no_fly_zone_single %lf %lf %lf %lf! \n", KGRN, i, no_fly_zone_single[0],
+                no_fly_zone_single[1], no_fly_zone_single[2], no_fly_zone_single[3]);
+            no_fly_zone.push_back(no_fly_zone_single);
+        }
+    }
+
+    void pcl2Callback(const sensor_msgs::PointCloud2::ConstPtr& msg)
+    {
+        // Once loaded we can close
+        if (loaded_pcl) 
+            return;
+
+        pcl_pc2 = *msg;
+        pcl_count++;
+        if (pcl_count > 5)
+            loaded_pcl = true;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr original_pcl_pc = 
+        pcl2_converter(pcl_pc2);
+
+        size_t num_points = original_pcl_pc->size();
+        int total = static_cast<int>(num_points);
+        printf("%s[task.h] Actual obstacle size %d! \n", KGRN, total);
+        printf("%s[task.h] INSTANCE OF PCL IS LOADED!\n", KCYN);
+    }
+
     /** @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint */
     void uavMissionMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
     {
@@ -321,7 +372,7 @@ public:
                 {
                     mission_mode.push_back(mission_mode_vector[j]); 
                     mission_changes.push_back(mission_mode_count);
-                    printf("%s[main.cpp] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                    printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
                         mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
                     
                     continue;
@@ -333,7 +384,7 @@ public:
                 {
                     mission_mode.push_back(mission_mode_vector[j]); 
                     mission_changes.push_back(mission_mode_count);
-                    printf("%s[main.cpp] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                    printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
                         mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
                     mission_mode_count = 0;
                     continue;
@@ -350,10 +401,19 @@ public:
                 mission_wp.push_back(wp.block(0,adder,3,mission_changes[j])); 
                 adder += mission_changes[j];
             }
-            printf("%s[main.cpp] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
+            printf("%s[task.h] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
 
         }
 
+        std::string leader_index = "S" + to_string((int)multi_array.data[5]);
+        
+        // If both are true then we know we are using formation parameters since we're the leader
+        if ((int)multi_array.data[5] < 30 && !leader_index.compare(_id))
+            formation_mission_mode = true;
+        else 
+            formation_mission_mode = false;
+
+        // We need to take this out of the callback
         uavCommandCallBack(command_callback_type);
 
 
@@ -463,7 +523,7 @@ public:
     }
 
     void TrajectoryGeneration(Vector3d start_pose, MatrixXd wp,
-        int _default, int _succeed)
+        int _default, int _succeed, int _mode)
     {
         double selected_speed;
         if (_succeed == kLand || _succeed == kTakeOff)
@@ -474,7 +534,59 @@ public:
         traj.Initialise(taskmaster::_order, 
             taskmaster::_control_points_division, 
             taskmaster::_trajectory_pub_rate);
-        traj.SetClampedPath(wp, 
+
+        MatrixXd key_wp;
+        // Add RRT here before we set path
+        if (_mode == bspline_avoid || _mode == bspline_avoid_opt)
+        {
+            rrt_sample rrt_node; std::string rrt_params;
+            if (formation_mission_mode)
+                rrt_params = _params_directory + "/formation.csv";
+            else
+                rrt_params = _params_directory + "/solo.csv";
+            if (!rrt_node.unpack_rrt_params(rrt_params))
+            {
+                printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);
+                taskmaster::uav_task = _default;
+                return;
+            }
+            for (int i = 0; i < no_fly_zone.size(); i++)
+            {
+                VectorXd no_fly_zone_single = VectorXd::Zero(4);
+                no_fly_zone_single = no_fly_zone[i];
+                printf("%s[task.h] %d no_fly_zone_single %lf %lf %lf %lf! \n", KGRN, i, no_fly_zone_single[0],
+                    no_fly_zone_single[1], no_fly_zone_single[2], no_fly_zone_single[3]);
+            }
+
+            // We assume we are receiving only one waypoint
+            if (rrt_node.RRT(pcl_pc2, start_pose, wp.col(0), 
+                no_fly_zone))
+            {
+                
+                rrt_node.rrt_bspline(3);
+                key_wp.resize(3,rrt_node.bspline.size());
+
+                for (int i = 0; i < rrt_node.bspline.size(); i++)
+                {
+                    key_wp(0,i) = rrt_node.bspline[i].x(); 
+                    key_wp(1,i) = rrt_node.bspline[i].y(); 
+                    key_wp(2,i) = rrt_node.bspline[i].z();
+                }
+                printf("%s[task.h] RRT Succeeded\n", KGRN);
+            }
+            else
+            {
+                printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);
+                taskmaster::uav_task = _default;
+                return;
+            }
+        }
+        else 
+        {
+            key_wp = wp;
+        }
+
+        traj.SetClampedPath(key_wp, 
             selected_speed, 
             start_pose); 
         if (!traj.UpdateFullPath())
@@ -636,3 +748,5 @@ public:
     }
 
 };
+
+#endif

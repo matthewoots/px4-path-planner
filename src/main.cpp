@@ -39,7 +39,8 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~");
     // The setpoint publishing rate MUST be faster than 2Hz
     taskmaster taskmaster(nh);
-    ros::spin();
+    ros::MultiThreadedSpinner spinner(4);
+    spinner.spin();
     return 0;
 }
 
@@ -54,6 +55,9 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<double>("common_max_vel", _common_max_vel, 1.0);
     _nh.param<std::string>("wp_file_location", _wp_file_location, "~/wp.csv");
     _nh.param<std::string>("agent_id", _id, "S1");
+    _nh.param<std::string>("package_directory", _package_directory, "~/");
+
+    _params_directory = _package_directory + "/params";
 
     // Global offset from the origin in NWU frame
     _nh.param<double>("nwu_offset_x", global_offset.x(), 0.0);
@@ -75,6 +79,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s  _common_max_vel =%s %lf \n", KBLU, KNRM, _common_max_vel);
     printf("%s  _common_min_vel =%s %lf \n", KBLU, KNRM, _common_min_vel);
     printf("%s  _wp_file_location =%s %s \n", KBLU, KNRM, _wp_file_location.c_str());
+    printf("%s  _package_directory =%s %s \n", KBLU, KNRM, _package_directory.c_str());
     printf("%s  _id =%s %s \n", KBLU, KNRM, _id.c_str());
     printf("%s  global_offset =%s [%lf %lf %lf] \n", KBLU, KNRM, 
         global_offset.x(), global_offset.y(), global_offset.z());
@@ -113,6 +118,14 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     bypass_msg_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         "/" + _id + "/bypass", 1, &taskmaster::bypassCommandCallback, this);
 
+    pcl2_msg_sub = _nh.subscribe<sensor_msgs::PointCloud2>(
+        "/cloud_pcd", 1,  boost::bind(&taskmaster::pcl2Callback, this, _1));
+
+    /** 
+    * @brief Handles no fly zone float64 array 1D x_min, x_max, y_min, y_max
+    */
+    no_fly_zone_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/no_fly_zones", 1, &taskmaster::noFlyZoneMsgCallBack, this);
 
 
     /* ------------ Publishers ------------ */
@@ -266,7 +279,7 @@ void taskmaster::uavCommandCallBack(int msg)
         
         TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
             uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-            wp, kIdle, kTakeOff);
+            wp, kIdle, kTakeOff, 1);
         break;
     }
 
@@ -384,7 +397,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
             TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                 uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-                mission_wp[0], kHover, kMission);
+                mission_wp[0], kHover, kMission, mission_mode[mission_type_count]);
         }
         else if (mission_mode.size() == 0)
         {
@@ -418,7 +431,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
         TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
             uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-            wp, kHover, kHome);
+            wp, kHover, kHome, 1);
         break;
     }
 
@@ -463,7 +476,7 @@ void taskmaster::uavCommandCallBack(int msg)
         
         TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
             uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-            wp, kHover, kLand);
+            wp, kHover, kLand, 1);
         printf("%s[main.cpp] UAV is landing! \n", KBLU);
         break;
     }
@@ -647,7 +660,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                         
                         TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                             uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-                            mission_wp[mission_type_count], kHover, kMission);
+                            mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);
 
                         // Don't break here, we have to return or else it will go through an empty bspline update
                         return;
@@ -683,7 +696,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                 // printf("%s[main.cpp] Bypass Mode activated!\n", KRED);
                 // If bypass_message callback shows long delay, we will return to hover
                 // The vehicle will exit the mode if target setpoints are not received at a rate of > 2Hz
-                if (ros::Time::now().toSec() - bypass_previous_message_time.toSec() > 1.0/2.0 - 0.01)
+                if (ros::Time::now().toSec() - bypass_previous_message_time.toSec() > 2.0)
                 {
                     printf("%s[main.cpp] Reject Bypass Mode and move to Hover!\n", KRED);
                     printf("%s[main.cpp] Latency %lf!\n", KRED, ros::Time::now().toSec() - bypass_previous_message_time.toSec());
