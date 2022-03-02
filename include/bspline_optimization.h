@@ -28,10 +28,12 @@
 #include <vector>
 #include <algorithm>
 #include <Eigen/Dense>
+#include <Eigen/Core>
 #include <LBFGSB.h>
 
 using namespace Eigen;
 using namespace std;
+using Eigen::VectorXd;
 using namespace LBFGSpp;
 
 #define KNRM  "\033[0m"
@@ -48,63 +50,99 @@ namespace bs
     class spline_opt_function
     {
     private:
-        int col;
+        int col, row, n;
 
         double weight_smooth, weight_feas, weight_term; 
-        double weight_static, weight_reci, weight_keyp;
+        double weight_static, weight_reci;
         double max_acc;
         double dt;
 
-        MatrixXd global_control_points;
+        double fx_smooth, fx_feas, fx_term;
+        VectorXd grad_smooth, grad_feas, grad_term;
+
+        MatrixXd reference_cp;
 
     public:
-        spline_opt_function(int col,
-            MatrixXd global_control_points, double dt,
-            double weight_smooth, double weight_feas, double weight_term, 
-            double weight_static, double weight_reci, double weight_keyp) 
-        {}
+        spline_opt_function(int n_) : n(n_) {}
 
-        double operator()(const MatrixXd& x, MatrixXd& grad)
+        void set_params(int _col, int _row, double _dt, double _max_acc)
+        {
+            col = _col; row = _row; dt = _dt; max_acc = _max_acc;
+        }
+
+        void load_data(MatrixXd _reference_cp)
+        {
+            reference_cp = MatrixXd::Zero(3,col);
+            reference_cp = _reference_cp;
+        }
+
+        void set_weights(double _weight_smooth, double _weight_feas, double _weight_term, 
+            double _weight_static, double _weight_reci)
+        {
+            weight_smooth = _weight_smooth; 
+            weight_feas = _weight_feas;
+            weight_term = _weight_term;
+        }
+
+        double operator()(const VectorXd& x, VectorXd& grad)
         {
             double fx = 0.0;
-            double fx_smooth, fx_feas, fx_term, fx_static, fx_reci, fx_keyp;
-            MatrixXd grad_smooth, grad_feas, grad_term, grad_static, grad_reci, grad_keyp;
-            // for(int i = 0; i < n; i += 2)
-            // {
-            //     double t1 = 1.0 - x[i];
-            //     double t2 = 10 * (x[i + 1] - x[i] * x[i]);
-            //     grad[i + 1] = 20 * t2;
-            //     grad[i]     = -2.0 * (x[i] * grad[i + 1] + t1);
-            //     fx += t1 * t1 + t2 * t2;
-            // }
-            smoothnessCost(x, &fx_smooth, &grad_smooth);
-            feasibilityCost(x, &fx_feas, &grad_feas);
-            terminalCost(x, &fx_term, &grad_term);
-            staticCollisionCost(x, &fx_static, &grad_static);
-            reciprocalAvoidanceCost(x, &fx_reci, &grad_reci);
-            keypointPenaltyCost(x, &fx_keyp, &grad_keyp);
+             
+            double fx_static, fx_reci;
+            
+            VectorXd grad_static, grad_reci;
+            
+            MatrixXd cp = MatrixXd::Zero(3,col);
+            for (int i = 0; i < row; i++)
+            {
+                for (int j = 0; j < col; j++)
+                {
+                    cp(i,j) = x[col * i + j];
+                }
+            }
+            // std::cout << "cp : \n" << cp << std::endl;
+            
+            smoothnessCost(cp);
+            feasibilityCost(cp);
+            terminalCost(cp, reference_cp);
+            // staticCollisionCost(x, &fx_static, &grad_static);
+            // reciprocalAvoidanceCost(x, &fx_reci, &grad_reci);
 
             fx = weight_smooth * fx_smooth +
                 weight_feas * fx_feas +
-                weight_term * fx_term +
-                weight_static * fx_static +
-                weight_reci * fx_reci +
-                weight_keyp * fx_keyp;
+                weight_term * fx_term;
+                // weight_static * fx_static +
+                // weight_reci * fx_reci;
 
+            for (int i = 0; i < col*row; i++)
+                grad[i] = weight_smooth * grad_smooth(i) +
+                   weight_feas * grad_feas(i) + 
+                   weight_term * grad_term(i);
+                // weight_static * grad_static +
+                // weight_reci * grad_reci;
+
+            // printf("%s[bspline_optimization.h] TM Cost %lf!\n", KBLU, weight_term * fx_term);
+            // printf("%s[bspline_optimization.h] FS Cost %lf!\n", KBLU, weight_feas * fx_feas);
+            // printf("%s[bspline_optimization.h] SM Cost %lf!\n", KBLU, weight_smooth * fx_smooth);
+            // printf("%s[bspline_optimization.h] Total Cost %lf!\n", KCYN, fx);
             return fx;
         }
 
-        void smoothnessCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
+        void smoothnessCost(MatrixXd cp)
         {
             /*
             * Minimizing the integral over the squared derivatives 
             * (smoothness) such as acceleration, jerk, snap.
             */
             double cost = 0; 
-            *grad = MatrixXd::Zero(3,col);
+            grad_smooth = VectorXd::Zero(col * row);
+
+            // col*0 + (0 to col-1) = x 
+            // col*1 + (0 to col-1) = y
+            // col*2 + (0 to col-1) = z 
+
             MatrixXd gradient = MatrixXd::Zero(3,col);
-            MatrixXd cp = x;
+            VectorXd grad_single = VectorXd::Zero(col * row);
 
             /* 3rd derivative, Jerk */
             for (int i = 0; i < cp.cols() - 3; i++)
@@ -113,6 +151,7 @@ namespace bs
                     3 * cp.col(i + 2) + 
                     3 * cp.col(i + 1) - 
                     cp.col(i);
+                // printf("%s[bspline_optimization.h] Jerk [%lf %lf %lf]!\n", KBLU, jerk.x(), jerk.y(), jerk.z());
 
                 cost = cost + pow(jerk.norm(), 2);
                 Vector3d tmp_j = 2.0 * jerk;
@@ -138,12 +177,14 @@ namespace bs
                 gradient.col(i + 2) = (tmp_a);
             }
 
-            *fx = cost;
-            *grad = gradient;
+            for (int i = 0; i < row; i++)
+                for (int j = 0; j < col; j++)
+                    grad_smooth(col * i + j) = gradient(i,j);
+            
+            fx_smooth = cost;
         }
 
-        void feasibilityCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
+        void feasibilityCost(MatrixXd cp)
         {
             /*
             * Soft limit on the norm of time derivatives 
@@ -151,9 +192,10 @@ namespace bs
             */
             double ts_inv2 = 1 / dt / dt;
             double cost = 0;
-            *grad = MatrixXd::Zero(3,col);
+            grad_feas = VectorXd::Zero(col * row);
+
             MatrixXd gradient = MatrixXd::Zero(3,col);
-            MatrixXd cp = x;
+            VectorXd grad_single = VectorXd::Zero(col * row);
 
             /* Check all instances with acceleration limit */
             for (int i = 0; i < cp.cols() - 2; i++)
@@ -180,41 +222,54 @@ namespace bs
                     else {}
                 }
             }
+            for (int i = 0; i < row; i++)
+                for (int j = 0; j < col; j++)
+                    grad_feas(col * i + j) = gradient(i,j);
 
-            *fx = cost;
-            *grad = gradient;
+            fx_feas = cost;
         }
 
-        void terminalCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
+        void terminalCost(MatrixXd cp, MatrixXd ref)
         {
             /*
             * Terminal cost function penalizes both position and 
             * velocity deviations from the desired values which comes from the global trajectory
             */
+            double cost = 0;
+            grad_term = VectorXd::Zero(col * row);
+
+            MatrixXd gradient = MatrixXd::Zero(3,col);
+            VectorXd grad_single = VectorXd::Zero(col * row);
+
+            for (int i = 0; i < cp.cols(); i++)
+            { 
+                Vector3d diff = cp.col(i) - ref.col(i);
+                double sq_diff = pow(diff.norm(), 2);
+                cost = cost + sq_diff;
+                gradient.col(i) = diff * 2;
+            }
+
+            for (int i = 0; i < row; i++)
+                for (int j = 0; j < col; j++)
+                    grad_term(col * i + j) = gradient(i,j);
+
+            fx_term = cost;
+
+
         }
 
-        void staticCollisionCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
+        void staticCollisionCost(VectorXd x, 
+            double *fx, VectorXd *grad)
         {
             
         }
 
-        void reciprocalAvoidanceCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
+        void reciprocalAvoidanceCost(VectorXd x, 
+            double *fx, VectorXd *grad)
         {
             /*
             * Reciprocal avoidance function that handles 
             * a collision-free path between agents
-            */
-        }
-
-        void keypointPenaltyCost(MatrixXd x, 
-            double *fx, MatrixXd *grad)
-        {
-            /*
-            * Keypoint penalty function which evaluates way-points 
-            * at the specific time in the local trajectory
             */
         }
 
@@ -223,41 +278,126 @@ namespace bs
     class bspline_optimization
     {
         private:
-        double dt;
+
+        VectorXd single_array;
+        VectorXd lb;
+        VectorXd ub;
+        double min_height = 0.5, max_height = 2.7;
+
+        double _weight_smooth, _weight_feas, _weight_term; 
+        double _weight_static, _weight_reci;
 
         public:
 
-        void solver(MatrixXd spline, MatrixXd g_spline, double dt)
+        void load(double weight_smooth, double weight_feas, double weight_term, 
+            double weight_static, double weight_reci)
+        {
+            _weight_smooth = weight_smooth; 
+            _weight_feas = weight_feas;
+            _weight_term = weight_term;
+            _weight_static = weight_static;
+            _weight_reci = weight_reci;
+        }
+
+        // Solver will solve with the given partial g_spline 
+        // We should 
+        MatrixXd solver(MatrixXd g_spline, double dt, MatrixXd fixed_cp, double max_acc)
         {
             // Set up parameters
             LBFGSBParam<double> param;  // New parameter class
             param.epsilon = 1e-6;
-            param.max_iterations = 60;
+            // param.delta = 1e-3;
+            param.max_iterations = 20;
+            param.max_step = 0.07; // default is 1e-4
+            param.max_linesearch = 20;
+            // param.linesearch = LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE;
+
+
+            int number_of_col = g_spline.cols();
+            int number_of_row = g_spline.rows(); // Should be 3
+
+            single_array = VectorXd::Zero(number_of_col * number_of_row);
+            lb = VectorXd::Zero(number_of_col * number_of_row);
+            ub = VectorXd::Zero(number_of_col * number_of_row);
+
+            // We need to compress g_spline to a single array
+            // g_spline -> g_single_array
+            // MatrixXd to vector<double>
+            // col*0 + (0 to col-1) = x 
+            // col*1 + (0 to col-1) = y
+            // col*2 + (0 to col-1) = z 
+            for (int i = 0; i < number_of_row; i++)
+                for (int j = 0; j < number_of_col; j++)
+                    single_array(number_of_col*i + j) = g_spline(i,j);
+
+
+            printf("%s[bspline_optimization.h] Single array size %lu! \n", KBLU, single_array.size());
 
             // Create solver and function object
             LBFGSBSolver<double> solver(param);  // New solver class
-            spline_opt_function opt(spline.cols(), g_spline, dt,
-                0.1, 0.1, 0.1, 0.1, 0.1, 0.1);
+            spline_opt_function opt(number_of_col * number_of_row);
 
-            // To get the bound we have to pass through the search algorithm
-            // Get the safe corridor for each control point
-            // Add the bound contrains to the optimizer
-            // In this case we may not need (static avoidance in optimizer = More efficient)
 
+            printf("%s[bspline_optimization.h] Setup Bounds! \n", KBLU);
             // Bounds
-            // VectorXd lb = VectorXd::Constant(n, 2.0);
-            // VectorXd ub = VectorXd::Constant(n, 4.0);
+            // Setup Lower Bound and upper bound for now we take z to be clamped
+            for (int i = 0; i < number_of_row; i++)
+            {
+                for (int j = 0; j < number_of_col; j++)
+                {
+                    if (i != 2)
+                    {
+                        // Load in Lower and Upper bound
+                        lb(number_of_col*i + j) = -5000;
+                        ub(number_of_col*i + j) = 5000;
+                    }
+                    else
+                    {
+                        // If representing z
+                        // Load in Lower and Upper bound
+                        lb(number_of_col*i + j) = min_height;
+                        ub(number_of_col*i + j) = max_height;
+                    }
 
-            // Initial guess
-            // VectorXd x = VectorXd::Constant(n, 3.0);
+                }
+            }
+
+            // Initial guess = g_single_array which is x
+            VectorXd x = single_array;
+
+            
 
             // x will be overwritten to be the best point found
-            double fx;
-            // int niter = solver.minimize(fun, x, fx, lb, ub);
+            double fx = 0; // Cost
+            opt.set_params(number_of_col, number_of_row, dt, max_acc);
+            opt.load_data(fixed_cp);
 
-            // std::cout << niter << " iterations" << std::endl;
-            // std::cout << "x = \n" << x.transpose() << std::endl;
-            // std::cout << "f(x) = " << fx << std::endl;
+            // double _weight_smooth, double _weight_feas, double _weight_term, 
+            // double _weight_static, double _weight_reci
+            opt.set_weights(_weight_smooth,
+                    _weight_feas,
+                    _weight_term,
+                    _weight_static,
+                    _weight_reci);
+            printf("%s[bspline_optimization.h] Set weights!\n", KBLU);
+            
+            int iter = solver.minimize(opt, x, fx, lb, ub);
+
+            // g_single_array -> g_spline
+            // vector<double> to MatrixXd
+
+            printf("%s[bspline_optimization.h] Iterations %d!\n", KMAG, iter);
+            printf("%s[bspline_optimization.h] F(x) %lf!\n", KGRN, fx);
+            
+            MatrixXd cp = MatrixXd::Zero(3,number_of_col);
+            for (int i = 0; i < number_of_row; i++)
+            {
+                for (int j = 0; j < number_of_col; j++)
+                {
+                    cp(i,j) = x[number_of_col * i + j];
+                }
+            }
+            return cp;
         }
                 
     };

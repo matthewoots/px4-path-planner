@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~");
     // The setpoint publishing rate MUST be faster than 2Hz
     taskmaster taskmaster(nh);
-    ros::MultiThreadedSpinner spinner(4);
+    ros::MultiThreadedSpinner spinner(3);
     spinner.spin();
     return 0;
 }
@@ -64,11 +64,19 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<double>("nwu_offset_y", global_offset.y(), 0.0);
     _nh.param<double>("nwu_offset_z", global_offset.z(), 0.0);
 
+    // Optimization parameters
+    _nh.param<double>("weight_smooth", _weight_smooth, 0.5);
+    _nh.param<double>("weight_feas", _weight_feas, 0.5);
+    _nh.param<double>("weight_term", _weight_term, 0.5);
+    _nh.param<double>("weight_static", _weight_static, 0.5);
+    _nh.param<double>("weight_reci", _weight_reci, 0.5);
+    _nh.param<double>("max_acc", _max_acc, 0.5);
+
     _nh.param<bool>("unpack_from_local_file", _unpack_from_local_file, true);
 
     _send_desired_interval = 1 / _trajectory_pub_rate;
 
-    printf("%s------------- Parameter ------------- \n", KYEL);
+    printf("%s------------- Planner Parameter ------------- \n", KYEL);
     printf("%s  _unpack_from_local_file =%s %s \n", KBLU, KNRM, _unpack_from_local_file ? "true" : "false");
     printf("%s  _setpoint_raw_mode =%s %s \n", KBLU, KNRM, _setpoint_raw_mode ? "true" : "false");
     printf("%s  _spline_order =%s %d \n", KBLU, KNRM, _order);
@@ -81,8 +89,20 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s  _wp_file_location =%s %s \n", KBLU, KNRM, _wp_file_location.c_str());
     printf("%s  _package_directory =%s %s \n", KBLU, KNRM, _package_directory.c_str());
     printf("%s  _id =%s %s \n", KBLU, KNRM, _id.c_str());
-    printf("%s  global_offset =%s [%lf %lf %lf] \n", KBLU, KNRM, 
+    printf("%s  global_offset =%s [%lf %lf %lf] \n\n", KBLU, KNRM, 
         global_offset.x(), global_offset.y(), global_offset.z());
+
+    printf("\n%s  Using System Time =%s %s\n", KBLU, KNRM, 
+       ros::Time::useSystemTime() ? "true" : "false");
+    printf("%s------------------------------------- \n", KYEL);
+
+    printf("%s------------- Optimization Parameter ------------- \n", KYEL);
+    printf("%s  _weight_smooth =%s %lf \n", KBLU, KNRM, _weight_smooth);
+    printf("%s  _weight_feas =%s %lf \n", KBLU, KNRM, _weight_feas);
+    printf("%s  _weight_term =%s %lf \n", KBLU, KNRM, _weight_term);
+    printf("%s  _weight_static =%s %lf \n", KBLU, KNRM, _weight_static);
+    printf("%s  _weight_reci =%s %lf \n", KBLU, KNRM, _weight_reci);
+    
     printf("%s------------------------------------- \n", KYEL);
 
 
@@ -149,6 +169,11 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     global_pos_pub = _nh.advertise<geometry_msgs::PoseStamped>(
         "/" + _id + "/global_pose", 10);
+    /** 
+    * @brief Publisher that publishes Bspline that is optimized
+    */
+    opt_bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
+        "/" + _id + "/path/opt_bspline", 10);
     
 
 
@@ -171,6 +196,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Mission Timer that handles output and publishing of setpoints to PX4
     */
     mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::missionTimer, this, false, false);
+    opt_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::optimization, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
@@ -308,6 +334,15 @@ void taskmaster::uavCommandCallBack(int msg)
         printf("%s[main.cpp] Mission command received! \n", KYEL);
         printf("%s[main.cpp] Loading Trajectory... \n", KBLU);
 
+        // Error when mission mode is sent while in another mission mode this is disastrous
+        // Throw the mission into hover while it calculates
+        if (!task_complete)
+        {
+            uav_task = kHover;
+            last_mission_pos = global_pos;
+            last_mission_yaw = yaw_nwu;
+        }
+
         // Using unpack waypoint from local files
         if (_unpack_from_local_file)
         {
@@ -397,8 +432,16 @@ void taskmaster::uavCommandCallBack(int msg)
 
             TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                 uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-                mission_wp[0], kHover, kMission, mission_mode[mission_type_count]);
+                mission_wp[0], kHover, kMission, mission_mode[mission_type_count]);             
         }
+
+        /** 
+        * @brief Enable start of optimization mission timer after RRT
+        */
+        if (mission_mode[mission_type_count] == bspline_avoid_opt)
+            opt_timer.start();
+
+
         else if (mission_mode.size() == 0)
         {
             printf("%s[main.cpp] Mission not Valid! Return to Hover! \n", KRED);
@@ -590,6 +633,57 @@ bool taskmaster::set_offboard()
     return is_mode_ready;
 }
 
+void taskmaster::optimization(const ros::TimerEvent &)
+{
+    // Will optimize and then add the values to the trajectory
+    // Find finite horizon
+    // Get global cp for [initial guess] = global cp changes in every iteration
+    // Get fixed trajectory for [terminal cost]
+    // Get knots + global cp for [reciprocal cost]
+
+    // Update the new [pos vel acc and yaw] so that uav can call on the desired states 
+    bs::bspline_optimization bsp_opt;
+    // MatrixXd opt = bsp_opt.solver(traj.GetGlobalControlPoints(), traj.GetKnotSpan());
+
+    ros::Time _start = ros::Time::now();
+    bsp_opt.load(_weight_smooth, _weight_feas, _weight_term, _weight_static, _weight_reci);
+
+    MatrixXd opt_cp = bsp_opt.solver(traj.GetGlobalControlPoints(), traj.GetKnotSpan(), traj.GetFixedControlPoints(), _max_acc);
+
+    ros::Duration diff = ros::Time::now() - _start;
+
+    printf("%s[main.cpp] Optimization Time %lf!\n", KGRN, diff.toSec());
+
+    // Publish New Optimized Spline Message
+    px4_path_planner::Bspline opt_bspline;
+    opt_bspline.order = traj.GetOrder();
+    opt_bspline.knot_division = traj.GetKnotDivision();
+    VectorXd knots = VectorXd (traj.GetKnots());
+
+    opt_bspline.global_control_points.reserve(opt_cp.cols());
+    for (int i = 0; i < opt_cp.cols(); i++)
+    {
+        geometry_msgs::Point pt;
+        pt.x = opt_cp(0,i);
+        pt.y = opt_cp(1,i);
+        pt.z = opt_cp(2,i);
+        // std::cout << KGRN << "[main.cpp] CP \n" << KNRM << pt << std::endl;
+        opt_bspline.global_control_points.push_back(pt);
+    }
+    // std::cout << KGRN << "[main.cpp] cp_size \n" << KNRM << bspline.global_control_points.size() << std::endl;
+
+    // printf("%s[main.cpp] Publishing knots \n", KGRN);
+    opt_bspline.knot.reserve(knots.rows());
+    for (int j = 0; j < knots.size(); j++)
+    {
+        opt_bspline.knot[j] = (float)knots[j];
+    }
+
+    opt_bspline_pub.publish(opt_bspline);
+
+}
+
+
 void taskmaster::missionTimer(const ros::TimerEvent &)
 {
     if (uav_task != uav_prev_task)
@@ -640,6 +734,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                 // If Mission is not using bypass means we are using time based trajectory
                 // std::cout << KYEL << "[main.cpp] Time Delay " << KNRM << (ros::Time::now().toSec() - last_request_timer) - (_send_desired_interval) << std::endl;
                 double fact = floor((ros::Time::now().toSec() - traj.GetStartTime())/_send_desired_interval);
+                
                 last_request_timer = traj.GetStartTime() + _send_desired_interval * fact;
 
                 if (traj.isCompleted(ros::Time::now().toSec()))
@@ -647,6 +742,8 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                     printf("%s[main.cpp] Completed Trajectory %d\n", KGRN, mission_type_count);
                     printf("%s[main.cpp] Check for next mission, %d / %d, %s\n", KGRN, mission_type_count, (int)(mission_wp.size()-1),
                         mission_type_count < (mission_wp.size()-1) ? "true" : "false");
+                    
+                    opt_timer.stop();
                     
                     // Check if there are still any more missions
                     if (mission_type_count < mission_wp.size()-1)
@@ -661,6 +758,9 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                         TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                             uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
                             mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);
+                        
+                        if (mission_mode[mission_type_count] == bspline_avoid_opt)
+                            opt_timer.start();
 
                         // Don't break here, we have to return or else it will go through an empty bspline update
                         return;
@@ -733,8 +833,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
 
         
 
-        /** @brief Recalculate trajectory during mission **/
-        /** @brief TODO **/    
+        /** @brief Recalculate trajectory during mission = Handled by optimization timer **/
         if (mission_mode[mission_type_count] != bypass)
         {
             Vector3d pos; Vector3d vel; Vector3d acc; 

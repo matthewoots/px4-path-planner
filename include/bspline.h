@@ -61,7 +61,7 @@ namespace bs
             {
                 keypoints.col(j+1) = wp.col(j);
             }
-            std::cout << KRED << "[Keypoints]:\n" << KNRM << keypoints << std::endl;
+            // std::cout << KRED << "[Keypoints]:\n" << KNRM << keypoints << std::endl;
             
             VectorXd diff = VectorXd::Zero(wp.cols());
             // Until cp_tmp.cols() - order - 1 since that is the last change in a clamped spline

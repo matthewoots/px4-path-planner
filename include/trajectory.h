@@ -36,8 +36,6 @@
 #include <tf/tf.h>
 
 #include <bspline.h>
-#pragma once
-#include <bspline_optimization.h>
 #include <csv.h>
 
 #define KNRM  "\033[0m"
@@ -66,7 +64,6 @@ private:
 
     VectorXd _fixed_knots;
     bs::bspline _bsp;
-    bs::bspline_optimization _bsp_opt;
 
     MatrixXd _pos; MatrixXd _vel; MatrixXd _acc; 
     VectorXd _yaw; VectorXd _time;
@@ -130,6 +127,8 @@ public:
 
     int GetOrder(){return _order;};
     int GetKnotDivision(){return _knotdiv;};
+    double GetKnotSpan(){return _knot_span;};
+
     int returnFixedCPColumn(){return _fixed_cp.cols();};
 
 };

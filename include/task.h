@@ -57,11 +57,13 @@
 #include <std_msgs/Float32MultiArray.h>
 
 #include "px4_path_planner/Bspline.h"
+#include "px4_path_planner/agent.h"
 
 #include <tf/tf.h>
 
 #include <trajectory.h>
 #include <rrt.h>
+#include <bspline_optimization.h>
 
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -106,12 +108,16 @@ private:
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
 
-    ros::Publisher bspline_pub, global_pos_pub;
+    ros::Publisher bspline_pub, global_pos_pub, opt_bspline_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
 
-    ros::Timer mission_timer;
+    ros::Timer mission_timer, opt_timer;
+
+    double _weight_smooth, _weight_feas, _weight_term; 
+    double _weight_static, _weight_reci;
+    double _max_acc;
 
     bool _initialised;
     bool _setpoint_raw_mode;
@@ -177,7 +183,7 @@ private:
     trajectory traj;
 
     sensor_msgs::PointCloud2 pcl_pc2;
-    int pcl_count;
+    int pcl_count = 0;
 
     vector<int> mission_mode_vector;
     vector<int> mission_mode;  
@@ -187,6 +193,15 @@ private:
     ros::Time bypass_previous_message_time;
     ros::Time mission_previous_message_time;
 
+    struct bspline_assembly 
+    {
+        int agent_id;
+        vector<double> knot_vector;
+        vector<Vector3d> control_points;
+    };
+
+    vector<bspline_assembly> bspline_vector;
+
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
     ~taskmaster();
@@ -194,6 +209,8 @@ public:
     bool set_offboard();
 
     void initialisation();
+
+    void optimization(const ros::TimerEvent &);
 
     void missionTimer(const ros::TimerEvent &);
 
@@ -230,6 +247,34 @@ public:
         // Initialise state at the beginning
         if (!_initialised)
             taskmaster::initialisation();
+    }
+
+    // We should reset the agent data at everytime we call it
+    /** @brief Get Agent info with bspline callback */
+    void agentInfoBsplineCallBack(const px4_path_planner::agent::ConstPtr &msg)
+    {
+        px4_path_planner::agent agent_bspline = *msg;
+        px4_path_planner::Bspline bspline_msg = agent_bspline.bs;
+        // int32 order
+        // int32 knot_division
+        // float64[] knot
+        // geometry_msgs/Point[] global_control_points
+        bspline_assembly tmp_bs;
+        tmp_bs.agent_id = agent_bspline.id;
+        
+        for (int i = 0; i < bspline_msg.knot.size(); i++)
+            tmp_bs.knot_vector.push_back(bspline_msg.knot[i]);
+
+        for (int i = 0; i < bspline_msg.global_control_points.size(); i++)
+        {
+            Vector3d cp_tmp;
+            cp_tmp.x() = bspline_msg.global_control_points[i].x;
+            cp_tmp.y() = bspline_msg.global_control_points[i].y;
+            cp_tmp.z() = bspline_msg.global_control_points[i].z;
+            tmp_bs.control_points.push_back(cp_tmp);
+        }
+
+        bspline_vector.push_back(tmp_bs);
     }
 
     /** @brief Get current uav velocity */
@@ -308,14 +353,16 @@ public:
 
     void pcl2Callback(const sensor_msgs::PointCloud2::ConstPtr& msg)
     {
-        // Once loaded we can close
-        if (loaded_pcl) 
+        // Once load a few times we do not need to do a callback
+        if (pcl_count > 10)
+        {
+            loaded_pcl = true;
             return;
+        }
 
         pcl_pc2 = *msg;
         pcl_count++;
-        if (pcl_count > 5)
-            loaded_pcl = true;
+        
         pcl::PointCloud<pcl::PointXYZ>::Ptr original_pcl_pc = 
         pcl2_converter(pcl_pc2);
 
@@ -331,6 +378,7 @@ public:
         mission_previous_message_time = ros::Time::now();
         std_msgs::Float32MultiArray multi_array = *msg;
         
+        // Error when mission mode is sent while in another mission mode this is disastrous
 
         // We just hardcode it to 0 so it will only take 1 message
         int command_callback_type = (int)multi_array.data[0];
@@ -365,30 +413,36 @@ public:
             // We check to see whether is there any changes in mission mode throughout our mission
             for (int j = 0; j < mission_mode_vector.size(); j++)
             {
-                mission_mode_count++;
+                
+                mission_mode.push_back(mission_mode_vector[j]); 
+                mission_changes.push_back(1);
+                
 
-                // Put the rest of the points at the last point
-                if (j == mission_mode_vector.size() - 1)
-                {
-                    mission_mode.push_back(mission_mode_vector[j]); 
-                    mission_changes.push_back(mission_mode_count);
-                    printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
-                        mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+                // Use this for checking whether there are mixed missions in the vector
+
+                // mission_mode_count++;
+                // // Put the rest of the points at the last point
+                // if (j == mission_mode_vector.size() - 1)
+                // {
+                //     mission_mode.push_back(mission_mode_vector[j]); 
+                //     mission_changes.push_back(mission_mode_count);
+                //     printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                //         mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
                     
-                    continue;
-                }
+                //     continue;
+                // }
 
-                // Mission Mode at j check to see whether is it the same as the previous
-                // if not we segment it
-                if (mission_mode_vector[j] != mission_mode_vector[j+1])
-                {
-                    mission_mode.push_back(mission_mode_vector[j]); 
-                    mission_changes.push_back(mission_mode_count);
-                    printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
-                        mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
-                    mission_mode_count = 0;
-                    continue;
-                }
+                // // Mission Mode at j check to see whether is it the same as the previous
+                // // if not we segment it
+                // if (mission_mode_vector[j] != mission_mode_vector[j+1])
+                // {
+                //     mission_mode.push_back(mission_mode_vector[j]); 
+                //     mission_changes.push_back(mission_mode_count);
+                //     printf("%s[task.h] Mission %d with %d waypoints woth type %d! \n", KBLU, 
+                //         mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+                //     mission_mode_count = 0;
+                //     continue;
+                // }
                 
             }            
 
@@ -434,7 +488,13 @@ public:
         pos_nwu_sp_tmp.pose.position.y = command_pose.y();
         pos_nwu_sp_tmp.pose.position.z = command_pose.z();
 
+        geometry_msgs::PoseStamped vel_nwu_sp_tmp;
+        vel_nwu_sp_tmp.pose.position.x = command_vel.x();
+        vel_nwu_sp_tmp.pose.position.y = command_vel.y();
+        vel_nwu_sp_tmp.pose.position.z = command_vel.z();
+
         geometry_msgs::PoseStamped pos_enu_sp_tmp = convert_global_nwu_to_enu(pos_nwu_sp_tmp);
+        geometry_msgs::PoseStamped vel_enu_sp_tmp = convert_global_nwu_to_enu(vel_nwu_sp_tmp);
 
         command_yaw += 90.0/180.0 * 3.1415;
     //     std::cout << KBLU << "[task.h] enu_cmd_yaw=" << KNRM <<
@@ -453,15 +513,12 @@ public:
         else
         {
             mavros_msgs::PositionTarget pos_sp;
-            // pos_sp.position.x = command_pose.x();
-            // pos_sp.position.y = command_pose.y();
-            // pos_sp.position.z = command_pose.z();
 
             pos_sp.position = pos_enu_sp_tmp.pose.position;
 
-            pos_sp.velocity.x = command_vel.x();
-            pos_sp.velocity.y = command_vel.y();
-            pos_sp.velocity.z = command_vel.z();
+            pos_sp.velocity.x = vel_enu_sp_tmp.pose.position.x;
+            pos_sp.velocity.y = vel_enu_sp_tmp.pose.position.y;
+            pos_sp.velocity.z = vel_enu_sp_tmp.pose.position.z;
 
             pos_sp.acceleration_or_force.x = command_acc.x();
             pos_sp.acceleration_or_force.y = command_acc.y();
@@ -476,7 +533,8 @@ public:
             // 2048	POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE	Ignore yaw rate
             pos_sp.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
             // pos_sp.type_mask = 3576; // Ignore Velocity, Acceleration and Yaw
-            pos_sp.type_mask = 2552; // Ignore Velocity, Acceleration
+            // pos_sp.type_mask = 2552; // Ignore Velocity, Acceleration
+            pos_sp.type_mask = 2496; // Ignore Acceleration
             // pos_sp.type_mask = 3520; // Ignore Acceleration and Yaw
             // pos_sp.type_mask = 3072; // Ignore Yaw
             // pos_sp.type_mask = 2048;
@@ -589,6 +647,7 @@ public:
         traj.SetClampedPath(key_wp, 
             selected_speed, 
             start_pose); 
+
         if (!traj.UpdateFullPath())
         {
             printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);

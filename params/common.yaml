@@ -14,3 +14,11 @@ unique_id_range: 20
 takeoff_height: 2.0
 common_max_vel: 0.8
 common_min_vel: 0.3
+
+# Optimization Parameters
+weight_smooth : 5.0
+weight_feas : 0.2
+weight_term : 1.0
+weight_static : 1.0
+weight_reci : 1.0
+max_acc : 0.5
