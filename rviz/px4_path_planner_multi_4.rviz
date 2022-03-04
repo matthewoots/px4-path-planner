@@ -133,7 +133,7 @@ Visualization Manager:
       Marker Topic: /S0/px4_path_planner_visualization0/cp_visualization_marker
       Name: Marker_S0
       Namespaces:
-        bspline_visualization: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -141,7 +141,7 @@ Visualization Manager:
       Marker Topic: /S1/px4_path_planner_visualization1/cp_visualization_marker
       Name: Marker_S1
       Namespaces:
-        bspline_visualization: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -149,7 +149,7 @@ Visualization Manager:
       Marker Topic: /S2/px4_path_planner_visualization2/cp_visualization_marker
       Name: Marker_S2
       Namespaces:
-        bspline_visualization: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -157,7 +157,7 @@ Visualization Manager:
       Marker Topic: /S3/px4_path_planner_visualization3/cp_visualization_marker
       Name: Marker_S3
       Namespaces:
-        bspline_visualization: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -219,6 +219,38 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S0/px4_path_planner_visualization0/opt_cp_visualization_marker
+      Name: S0_Opt
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S1/px4_path_planner_visualization1/opt_cp_visualization_marker
+      Name: S1_Opt
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S2/px4_path_planner_visualization2/opt_cp_visualization_marker
+      Name: S2_Opt
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /S3/px4_path_planner_visualization3/opt_cp_visualization_marker
+      Name: S3_Opt
+      Namespaces:
+        {}
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:

@@ -113,7 +113,7 @@ private:
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
 
-    ros::Timer mission_timer, opt_timer;
+    ros::Timer mission_timer, opt_timer, hover_timer;
 
     double _weight_smooth, _weight_feas, _weight_term; 
     double _weight_static, _weight_reci;
@@ -211,7 +211,7 @@ public:
     void initialisation();
 
     void optimization(const ros::TimerEvent &);
-
+    void hoverTimer(const ros::TimerEvent &);
     void missionTimer(const ros::TimerEvent &);
 
     const std::string TaskToString(int v)
@@ -467,6 +467,8 @@ public:
         else 
             formation_mission_mode = false;
 
+        mission_type_count = 0;
+
         // We need to take this out of the callback
         uavCommandCallBack(command_callback_type);
 
@@ -493,8 +495,10 @@ public:
         vel_nwu_sp_tmp.pose.position.y = command_vel.y();
         vel_nwu_sp_tmp.pose.position.z = command_vel.z();
 
+        // Convert from ENU to Global NWU
+        geometry_msgs::PoseStamped vel_enu_sp = transform_pose_stamped(vel_nwu_sp_tmp, Vector3d(0,0,90.0));
+
         geometry_msgs::PoseStamped pos_enu_sp_tmp = convert_global_nwu_to_enu(pos_nwu_sp_tmp);
-        geometry_msgs::PoseStamped vel_enu_sp_tmp = convert_global_nwu_to_enu(vel_nwu_sp_tmp);
 
         command_yaw += 90.0/180.0 * 3.1415;
     //     std::cout << KBLU << "[task.h] enu_cmd_yaw=" << KNRM <<
@@ -516,9 +520,9 @@ public:
 
             pos_sp.position = pos_enu_sp_tmp.pose.position;
 
-            pos_sp.velocity.x = vel_enu_sp_tmp.pose.position.x;
-            pos_sp.velocity.y = vel_enu_sp_tmp.pose.position.y;
-            pos_sp.velocity.z = vel_enu_sp_tmp.pose.position.z;
+            pos_sp.velocity.x = vel_enu_sp.pose.position.x;
+            pos_sp.velocity.y = vel_enu_sp.pose.position.y;
+            pos_sp.velocity.z = vel_enu_sp.pose.position.z;
 
             pos_sp.acceleration_or_force.x = command_acc.x();
             pos_sp.acceleration_or_force.y = command_acc.y();

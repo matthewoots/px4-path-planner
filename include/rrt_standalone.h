@@ -35,6 +35,7 @@
 #include <vector>
 #include <algorithm>
 #include <limits>
+#include <random>
 #include <Eigen/Dense>
 
 #include <sensor_msgs/PointCloud2.h>
@@ -113,18 +114,28 @@ class rrt_node
         Node* random_node = new Node;
         Node* step_node = new Node;
     
+        std::random_device dev;
+        std:mt19937 generator(dev());
+        std::uniform_real_distribution<double> dis(0.0, 1.0);
+
+        // double random_num = dis(generator);
+
+
         // Provide to .2 decimals
-        srand((unsigned)(ros::WallTime::now().toNSec()));
-        double random_x = (double)rand() / (INT_MAX + 1.0);
+        // srand((unsigned)(ros::WallTime::now().toNSec()));
+        // double random_x = (double)rand() / (INT_MAX + 1.0);
+        double random_x = dis(generator);
         (random_node->position).x() = random_x * map_size.x() - map_size.x()/2;
         
 
-        srand((unsigned)(ros::WallTime::now().toNSec()));
-        double random_y = (double)rand() / (INT_MAX + 1.0);
+        // srand((unsigned)(ros::WallTime::now().toNSec()));
+        // double random_y = (double)rand() / (INT_MAX + 1.0);
+        double random_y = dis(generator);
         (random_node->position).y() = random_y * map_size.y() - map_size.y()/2;
         
         Vector3d transformed_vector = Vector3d((random_node->position).x(),
                 (random_node->position).y(), 0);
+
         for (int i = 0; i < no_fly_zone.size(); i++)
         {
             // x_min, x_max, y_min, y_max in original frame
@@ -142,8 +153,9 @@ class rrt_node
         }
 
         // Constrain height within the min-max range
-        srand((unsigned)(ros::WallTime::now().toNSec()));
-        double random_z = (double)rand() / (INT_MAX + 1.0);
+        // srand((unsigned)(ros::WallTime::now().toNSec()));
+        // double random_z = (double)rand() / (INT_MAX + 1.0);
+        double random_z = dis(generator);
         double tmp =  random_z * map_size.z() - map_size.z()/2 + origin.z();
         tmp = max(tmp, _min_height);
         tmp = min(tmp, _max_height);
@@ -181,7 +193,7 @@ class rrt_node
                     
             }
         }
-        
+
         bool flag = check_validity(nodes[index]->position, step_node->position);
 
         if(flag)
@@ -489,7 +501,7 @@ class rrt_node
 
         no_fly_zone.clear(); 
         no_fly_zone = _no_fly_zone;
-        printf("%s[rrt_standalone.h] no_fly_zone size %d! \n", KBLU, no_fly_zone.size());
+        printf("%s[rrt_standalone.h] no_fly_zone size %lu! \n", KBLU, no_fly_zone.size());
 
         rotation = _rotation;
         translation = _translation;
@@ -525,7 +537,7 @@ class rrt_node
         // srand(time(NULL));
     }
 
-    void run()
+    std::vector<Vector3d> run(std::atomic<bool>& ready)
     {
         size_t num_points = obs->size();
         int total = static_cast<int>(num_points);
@@ -534,7 +546,7 @@ class rrt_node
         printf("%s[rrt_standalone.h] Obstacle size %d! \n", KGRN, total);
         printf("%s[rrt_standalone.h] Start run process! \n", KGRN);
         
-        while(!reached)
+        while(!reached && !ready)
         {
             rrt();
             if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > timeout)
@@ -545,9 +557,18 @@ class rrt_node
                 break;
             }
         }
+
+        //someone else has found the solution or solution is invalid
+        if (ready || error)
+            return std::vector<Vector3d>();
+
         printf("%sSolution found! with %d iter and %d nodes\n", 
             KGRN, iter, total_nodes);
         printf("%sTotal Time Taken = %lf!\n", KGRN, ros::Time::now().toSec() - prev);
+
+        ready = true;
+
+        return path_extraction();
     }
 
     std::vector<Vector3d> path_extraction()

@@ -197,6 +197,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::missionTimer, this, false, false);
     opt_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::optimization, this, false, false);
+    hover_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::hoverTimer, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
@@ -255,6 +256,7 @@ void taskmaster::uavCommandCallBack(int msg)
         {
             printf("%s[main.cpp] Offboard mode activated going to run takeoff \n", KBLU);
             mission_timer.start();
+            hover_timer.start();
             printf("%s[main.cpp] Mission timer started! \n", KGRN);
             takeoff_flag = true;
         }
@@ -343,84 +345,82 @@ void taskmaster::uavCommandCallBack(int msg)
             last_mission_yaw = yaw_nwu;
         }
 
-        // Using unpack waypoint from local files
-        if (_unpack_from_local_file)
-        {
-            // Reset both waypoint and mission mode vector before we push them back
-            mission_wp.clear();
-            mission_mode_vector.clear();
-            mission_mode.clear();
+        // // Using unpack waypoint from local files
+        // if (_unpack_from_local_file)
+        // {
+        //     // Reset both waypoint and mission mode vector before we push them back
+        //     mission_wp.clear();
+        //     mission_mode_vector.clear();
+        //     mission_mode.clear();
             
-            MatrixXd wp;
-            if (!UnpackWaypoint(&mission_mode_vector, &wp, _wp_file_location))
-            {
-                printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
-                uav_task = kHover;
-                break;
-            }
-            std::cout << KBLU << "[main.cpp] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
-            printf("%s[main.cpp] Total Mission size %lu with mode size %lu waypoints! \n", KBLU, 
-                wp.size(), mission_mode_vector.size());
+        //     MatrixXd wp;
+        //     if (!UnpackWaypoint(&mission_mode_vector, &wp, _wp_file_location))
+        //     {
+        //         printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
+        //         uav_task = kHover;
+        //         break;
+        //     }
+        //     std::cout << KBLU << "[main.cpp] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
+        //     printf("%s[main.cpp] Total Mission size %lu with mode size %lu waypoints! \n", KBLU, 
+        //         wp.size(), mission_mode_vector.size());
 
-            // Mission changes counts how many waypoints belong to the mission mode
-            // Counts in series/sequentially 
-            vector<int> mission_changes; 
-            int mission_mode_count = 0;
-            // We check to see whether is there any changes in mission mode throughout our mission
-            for (int j = 0; j < mission_mode_vector.size(); j++)
-            {
-                mission_mode_count++;
+        //     // Mission changes counts how many waypoints belong to the mission mode
+        //     // Counts in series/sequentially 
+        //     vector<int> mission_changes; 
+        //     int mission_mode_count = 0;
+        //     // We check to see whether is there any changes in mission mode throughout our mission
+        //     for (int j = 0; j < mission_mode_vector.size(); j++)
+        //     {
+        //         mission_mode_count++;
 
-                // Put the rest of the points at the last point
-                if (j == mission_mode_vector.size() - 1)
-                {
-                    mission_mode.push_back(mission_mode_vector[j]); 
-                    mission_changes.push_back(mission_mode_count);
-                    printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
-                        mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+        //         // Put the rest of the points at the last point
+        //         if (j == mission_mode_vector.size() - 1)
+        //         {
+        //             mission_mode.push_back(mission_mode_vector[j]); 
+        //             mission_changes.push_back(mission_mode_count);
+        //             printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
+        //                 mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
                     
-                    continue;
-                }
+        //             continue;
+        //         }
 
-                // Mission Mode at j check to see whether is it the same as the previous
-                // if not we segment it
-                if (mission_mode_vector[j] != mission_mode_vector[j+1])
-                {
-                    mission_mode.push_back(mission_mode_vector[j]); 
-                    mission_changes.push_back(mission_mode_count);
-                    printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
-                        mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
-                    mission_mode_count = 0;
-                    continue;
-                }
+        //         // Mission Mode at j check to see whether is it the same as the previous
+        //         // if not we segment it
+        //         if (mission_mode_vector[j] != mission_mode_vector[j+1])
+        //         {
+        //             mission_mode.push_back(mission_mode_vector[j]); 
+        //             mission_changes.push_back(mission_mode_count);
+        //             printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
+        //                 mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
+        //             mission_mode_count = 0;
+        //             continue;
+        //         }
                 
-            }            
+        //     }            
 
-            // Adder is just to push back the points that we start from when we do the Matrix block process
-            // To fill in the mission wp
-            int adder = 0;
-            // Segment mission_wp into wp
-            for (int j = 0; j < mission_changes.size(); j++)
-            {
-                mission_wp.push_back(wp.block(0,adder,3,mission_changes[j])); 
-                adder += mission_changes[j];
-            }
-            printf("%s[main.cpp] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
-        }
-        else
-        {
-            // We should check whether is there any mission message 
-            if (ros::Time::now().toSec() - mission_previous_message_time.toSec() > 5.5)
-            {
-                taskmaster::uav_task = kHover;
-                printf("%s[main.cpp] Reject Mission with 0 waypoint message! \n", KRED);
-                last_mission_pos = global_pos;
-                last_mission_yaw = yaw_nwu;
-                break;
-            }
-        }
-
-        mission_type_count = 0;
+        //     // Adder is just to push back the points that we start from when we do the Matrix block process
+        //     // To fill in the mission wp
+        //     int adder = 0;
+        //     // Segment mission_wp into wp
+        //     for (int j = 0; j < mission_changes.size(); j++)
+        //     {
+        //         mission_wp.push_back(wp.block(0,adder,3,mission_changes[j])); 
+        //         adder += mission_changes[j];
+        //     }
+        //     printf("%s[main.cpp] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
+        // }
+        // else
+        // {
+        //     // We should check whether is there any mission message 
+        //     if (ros::Time::now().toSec() - mission_previous_message_time.toSec() > 5.5)
+        //     {
+        //         taskmaster::uav_task = kHover;
+        //         printf("%s[main.cpp] Reject Mission with 0 waypoint message! \n", KRED);
+        //         last_mission_pos = global_pos;
+        //         last_mission_yaw = yaw_nwu;
+        //         break;
+        //     }
+        // }
 
         // Mission changes is the switch in missions
         if (mission_mode[mission_type_count] != bypass)
@@ -432,7 +432,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
             TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                 uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-                mission_wp[0], kHover, kMission, mission_mode[mission_type_count]);             
+                mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);             
         }
 
         /** 
@@ -683,6 +683,28 @@ void taskmaster::optimization(const ros::TimerEvent &)
 
 }
 
+void taskmaster::hoverTimer(const ros::TimerEvent &)
+{
+    switch (uav_task)
+    {
+    case kHover:
+    {
+        if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
+        {
+            uavDesiredControlHandler(last_mission_pos, 
+            Vector3d (0,0,0),
+            Vector3d (0,0,0),
+            last_mission_yaw);
+            last_request_timer = ros::Time::now().toSec();
+        }
+
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 
 void taskmaster::missionTimer(const ros::TimerEvent &)
 {
@@ -702,19 +724,19 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         break;
     }
 
-    case kHover:
-    {
-        if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
-        {
-            uavDesiredControlHandler(last_mission_pos, 
-            Vector3d (0,0,0),
-            Vector3d (0,0,0),
-            last_mission_yaw);
-            last_request_timer = ros::Time::now().toSec();
-        }
+    // case kHover:
+    // {
+    //     if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
+    //     {
+    //         uavDesiredControlHandler(last_mission_pos, 
+    //         Vector3d (0,0,0),
+    //         Vector3d (0,0,0),
+    //         last_mission_yaw);
+    //         last_request_timer = ros::Time::now().toSec();
+    //     }
 
-        break;
-    }
+    //     break;
+    // }
 
     case kHome:
     {
@@ -755,14 +777,17 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                         // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
                         //     mission_wp[mission_type_count], kHover, kMission);
                         
-                        TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
-                            uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
-                            mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);
+                        // TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
+                        //     uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
+                        //     mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);
                         
-                        if (mission_mode[mission_type_count] == bspline_avoid_opt)
-                            opt_timer.start();
+                        // if (mission_mode[mission_type_count] == bspline_avoid_opt)
+                        //     opt_timer.start();
+
+                        uavCommandCallBack(MISSION);
 
                         // Don't break here, we have to return or else it will go through an empty bspline update
+
                         return;
                     }
 

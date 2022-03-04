@@ -35,6 +35,7 @@
 #include <vector>
 #include <ros/ros.h>
 #include <Eigen/Dense>
+#include <future>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
@@ -232,40 +233,89 @@ public:
         printf("%s[rrt.cpp] Actual obstacle size %d! \n", KGRN, total);
 
         // Run RRT 
-        rrt_node rrt;
-        rrt.error = true;
-        int rrt_tries = 0;
-        while (rrt_tries < _max_tries && rrt.process_status())
-        {
-            // Use for transformed start and end in transformed frame
-            rrt.initialize(t_t_start, t_t_end, transformed_cropped_pc,
-                map_size, Vector3d(0,0,t_z),
-                step_size, _obs_threshold,
-                min_height, max_height,
-                line_search_division, _timeout, no_fly_zone,
-                rotation, translation);
-            rrt.run();
-            rrt_tries++;
-        }
+        // rrt_node rrt;
+        // rrt.error = true;
+        // int rrt_tries = 0;
+        // while (rrt_tries < _max_tries && rrt.process_status())
+        // {
+        //     // Use for transformed start and end in transformed frame
+        //     rrt.initialize(t_t_start, t_t_end, transformed_cropped_pc,
+        //         map_size, Vector3d(0,0,t_z),
+        //         step_size, _obs_threshold,
+        //         min_height, max_height,
+        //         line_search_division, _timeout, no_fly_zone,
+        //         rotation, translation);
+        //     rrt.run();
+        //     rrt_tries++;
+        // }
+        
+        std::atomic<bool> ready;
+        ready = false;
+        std::vector<Vector3d> final_result;
 
-        if (rrt_tries > _max_tries)
+        while (!ready)
+        {
+            std::vector<std::future<std::vector<Vector3d>>> futures;
+
+            for (size_t i = 0; i < 4; i++)
+            {
+                futures.push_back(
+                    std::async(std::launch::async, [&]()
+                    {
+                        rrt_node rrt;
+                        rrt.error = true;
+
+                        // Use for transformed start and end in transformed frame
+                        rrt.initialize(t_t_start, t_t_end, transformed_cropped_pc,
+                            map_size, Vector3d(0,0,t_z),
+                            step_size, _obs_threshold,
+                            min_height, max_height,
+                            line_search_division, _timeout, no_fly_zone,
+                            rotation, translation);
+
+                        return rrt.run(ready);
+                    })
+                );
+            }
+            
+            std::vector<std::vector<Vector3d>> results;
+
+            for (auto& currentFuture : futures)
+                results.push_back(currentFuture.get());
+
+            for (const auto& currentResult : results)
+            {
+                if (currentResult.size() > 0)
+                {
+                    final_result = currentResult;
+                    break;
+                }
+            }
+        } //while(!ready)
+
+        // if (rrt_tries > _max_tries)
+        // {
+        //     printf("%s[rrt.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
+        //     return false;
+        // }
+
+        // if (rrt.process_status())
+        // {
+        //     printf("%s[rrt.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
+        //     return false;
+        // }
+
+        printf("%s[rrt.cpp] rrt_size %lu! %s\n", KGRN, final_result.size(), KNRM);
+
+        if (final_result.empty())
         {
             printf("%s[rrt.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
             return false;
         }
-
-        if (rrt.process_status())
-        {
-            printf("%s[rrt.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
-            return false;
-        }
-
-        printf("%s[rrt.cpp] rrt_size %d! %s\n", KGRN, (rrt.path_extraction()).size(), KNRM);
-
 
         // Extract path from transformed frame into normal frame
         // Remember to factor in z scale back
-        std::vector<Vector3d> transformed_path1 = rrt.path_extraction();
+        std::vector<Vector3d> transformed_path1 = final_result;
         std::vector<Vector3d> transformed_path;
 
         // Transformed path needs to scale back the z
