@@ -1,0 +1,41 @@
+<!-- export HOSTNAME=$(hostname | tail -c 2)
+export UAV_GROUPNAME="S${HOSTNAME}" -->
+<!-- Add HOSTNAME as id -->
+
+<launch>
+    <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
+    <arg name="_uav_idx" value="$(env HOSTNAME)" />
+    <arg name="_fcu_url" value="/dev/ttyAML0:500000" />
+    <arg name="_gcs_url" value="udp://@192.168.31.84" />
+
+    <group ns="$(arg _uav_id)">
+        <remap from="/$(arg _uav_id)/bypass" to="/$(arg _uav_id)/formation/setpoint_raw"/>
+        <remap from="/$(arg _uav_id)/mission" to="/$(arg _uav_id)/global_planner_mission"/>
+	    <remap from="/$(arg _uav_id)/global_planner_formation" to="/$(arg _uav_id)/global_planner_mission"/>
+
+		<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner$(arg _uav_idx)" output="screen">
+			<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
+			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
+			<param name="agent_id" value="$(arg _uav_id)"/>
+			<param name="package_directory" value="$(find px4_path_planner)"/>
+            <param name="nwu_offset_x" value="0.0"/>
+            <param name="nwu_offset_y" value="0.0"/>
+            <param name="nwu_offset_z" value="0.0"/>
+		</node>
+
+		<include file="$(find mavros)/launch/px4.launch">
+			<arg name="fcu_url" value="$(arg _fcu_url)" />
+            <arg name="gcs_url" value="$(arg _gcs_url)" />
+        </include>
+
+        <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone$(arg _uav_idx)" output="screen">
+            <param name="agent_id" value="$(arg xid)"/>
+	        <param name="control_mode" value="velocity"/>
+        </node>
+
+		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization$(arg _uav_idx)" output="screen">
+			<param name="agent_id" value="$(arg _uav_id)"/>
+		</node>
+    </group>
+
+</launch>
