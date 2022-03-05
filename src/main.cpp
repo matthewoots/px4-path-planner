@@ -197,7 +197,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::missionTimer, this, false, false);
     opt_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::optimization, this, false, false);
-    hover_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::hoverTimer, this, false, false);
+    hover_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::hoverTimer, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }

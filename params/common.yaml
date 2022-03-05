@@ -5,7 +5,7 @@ unpack_from_local_file: false
 # Spline Parameters
 spline_order: 5
 control_points_division: 10
-trajectory_pub_rate: 20
+trajectory_pub_rate: 50
 
 # Total number of Agents
 unique_id_range: 20

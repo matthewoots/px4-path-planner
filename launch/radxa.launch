@@ -1,5 +1,9 @@
-<!-- export HOSTNAME=$(hostname | tail -c 2)
-export UAV_GROUPNAME="S${HOSTNAME}" -->
+<!-- 
+add this to .bashrc
+export HOSTNAME=$(hostname | tail -c 2)
+export UAV_GROUPNAME="S${HOSTNAME}"
+echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}" 
+-->
 <!-- Add HOSTNAME as id -->
 
 <launch>
@@ -29,7 +33,7 @@ export UAV_GROUPNAME="S${HOSTNAME}" -->
         </include>
 
         <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone$(arg _uav_idx)" output="screen">
-            <param name="agent_id" value="$(arg xid)"/>
+            <param name="agent_id" value="$(arg _uav_id)"/>
 	        <param name="control_mode" value="velocity"/>
         </node>
 
