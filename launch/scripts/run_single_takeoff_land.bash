@@ -1,3 +1,5 @@
+#!/bin/bash
+
 RED='\033[0;31m' # ${RED}
 NC='\033[0m' # ${NC} no color
 GREEN='\033[0;32m' # ${GREEN}

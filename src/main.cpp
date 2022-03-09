@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~");
     // The setpoint publishing rate MUST be faster than 2Hz
     taskmaster taskmaster(nh);
-    ros::MultiThreadedSpinner spinner(3);
+    ros::MultiThreadedSpinner spinner(4);
     spinner.spin();
     return 0;
 }

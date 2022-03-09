@@ -354,9 +354,9 @@ public:
     void pcl2Callback(const sensor_msgs::PointCloud2::ConstPtr& msg)
     {
         // Once load a few times we do not need to do a callback
-        if (pcl_count > 10)
+        if (pcl_count > 2)
         {
-            loaded_pcl = true;
+            // loaded_pcl = true;
             return;
         }
 
