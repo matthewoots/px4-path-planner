@@ -121,10 +121,12 @@ private:
 
     bool _initialised;
     bool _setpoint_raw_mode;
-    bool takeoff_flag; // Whether the agent has taken off
+    bool takeoff_flag = false; // Whether the agent has taken off
     bool task_complete; // When task is complete
 
     double _send_desired_interval; // Trajectory interval, for bspline planning
+    double _send_optimization_interval;
+    double _optimization_rate;
     double _trajectory_pub_rate;
     double _takeoff_height;
     double _common_max_vel;
@@ -148,6 +150,9 @@ private:
 
     bool formation_mission_mode = false;
     vector<VectorXd> no_fly_zone;
+
+    bool bypass_initialize = false;
+    double bypass_init_time = -1.0; // Not initialized condition for time
 
     vector<int> uav_id;
     

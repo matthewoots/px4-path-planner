@@ -65,6 +65,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<double>("nwu_offset_z", global_offset.z(), 0.0);
 
     // Optimization parameters
+    _nh.param<double>("optimization_rate", _optimization_rate, 2.0);
     _nh.param<double>("weight_smooth", _weight_smooth, 0.5);
     _nh.param<double>("weight_feas", _weight_feas, 0.5);
     _nh.param<double>("weight_term", _weight_term, 0.5);
@@ -75,6 +76,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<bool>("unpack_from_local_file", _unpack_from_local_file, true);
 
     _send_desired_interval = 1 / _trajectory_pub_rate;
+    _send_optimization_interval = 1 / _optimization_rate;
 
     printf("%s------------- Planner Parameter ------------- \n", KYEL);
     printf("%s  _unpack_from_local_file =%s %s \n", KBLU, KNRM, _unpack_from_local_file ? "true" : "false");
@@ -97,6 +99,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s------------------------------------- \n", KYEL);
 
     printf("%s------------- Optimization Parameter ------------- \n", KYEL);
+    printf("%s  _send_optimization_interval =%s %lf \n", KBLU, KNRM, _send_optimization_interval);
     printf("%s  _weight_smooth =%s %lf \n", KBLU, KNRM, _weight_smooth);
     printf("%s  _weight_feas =%s %lf \n", KBLU, KNRM, _weight_feas);
     printf("%s  _weight_term =%s %lf \n", KBLU, KNRM, _weight_term);
@@ -146,6 +149,16 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     no_fly_zone_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
         "/no_fly_zones", 1, &taskmaster::noFlyZoneMsgCallBack, this);
+    /** 
+    * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
+    */
+    mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
+    /** 
+    * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
+    */
+    mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
 
 
     /* ------------ Publishers ------------ */
@@ -195,9 +208,9 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     /** 
     * @brief Mission Timer that handles output and publishing of setpoints to PX4
     */
-    mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::missionTimer, this, false, false);
-    opt_timer = _nh.createTimer(ros::Duration(0.5), &taskmaster::optimization, this, false, false);
-    hover_timer = _nh.createTimer(ros::Duration(_send_desired_interval / 5.0), &taskmaster::hoverTimer, this, false, false);
+    mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval), &taskmaster::missionTimer, this, false, false);
+    opt_timer = _nh.createTimer(ros::Duration(_send_optimization_interval), &taskmaster::optimization, this, false, false);
+    hover_timer = _nh.createTimer(ros::Duration(_send_desired_interval), &taskmaster::hoverTimer, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
@@ -242,6 +255,13 @@ void taskmaster::uavCommandCallBack(int msg)
     {
     case TAKEOFF:
     {
+        if (takeoff_flag)
+        {
+            printf("%s[main.cpp] Vehicle has already taken off, going back to hover \n", KRED);
+            uav_task = kHover;
+            break;
+        }
+
         if (!uav_current_state.armed && retry < tries)
         {
             printf("%s[main.cpp] Vehicle is not armed, please ask safety pilot to arm the vehicle [Attempt %d] \n", KRED, retry + 1);
@@ -345,83 +365,6 @@ void taskmaster::uavCommandCallBack(int msg)
             last_mission_yaw = yaw_nwu;
         }
 
-        // // Using unpack waypoint from local files
-        // if (_unpack_from_local_file)
-        // {
-        //     // Reset both waypoint and mission mode vector before we push them back
-        //     mission_wp.clear();
-        //     mission_mode_vector.clear();
-        //     mission_mode.clear();
-            
-        //     MatrixXd wp;
-        //     if (!UnpackWaypoint(&mission_mode_vector, &wp, _wp_file_location))
-        //     {
-        //         printf("%s[main.cpp] Not able to load and set trajectory! \n", KRED);
-        //         uav_task = kHover;
-        //         break;
-        //     }
-        //     std::cout << KBLU << "[main.cpp] " << "[Mission Waypoint] " << std::endl << KNRM << wp << std::endl;
-        //     printf("%s[main.cpp] Total Mission size %lu with mode size %lu waypoints! \n", KBLU, 
-        //         wp.size(), mission_mode_vector.size());
-
-        //     // Mission changes counts how many waypoints belong to the mission mode
-        //     // Counts in series/sequentially 
-        //     vector<int> mission_changes; 
-        //     int mission_mode_count = 0;
-        //     // We check to see whether is there any changes in mission mode throughout our mission
-        //     for (int j = 0; j < mission_mode_vector.size(); j++)
-        //     {
-        //         mission_mode_count++;
-
-        //         // Put the rest of the points at the last point
-        //         if (j == mission_mode_vector.size() - 1)
-        //         {
-        //             mission_mode.push_back(mission_mode_vector[j]); 
-        //             mission_changes.push_back(mission_mode_count);
-        //             printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
-        //                 mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
-                    
-        //             continue;
-        //         }
-
-        //         // Mission Mode at j check to see whether is it the same as the previous
-        //         // if not we segment it
-        //         if (mission_mode_vector[j] != mission_mode_vector[j+1])
-        //         {
-        //             mission_mode.push_back(mission_mode_vector[j]); 
-        //             mission_changes.push_back(mission_mode_count);
-        //             printf("%s[main.cpp] Mission %d with %d waypoints with type %d! \n", KBLU, 
-        //                 mission_changes.size(), mission_mode_count, mission_mode_vector[j]);
-        //             mission_mode_count = 0;
-        //             continue;
-        //         }
-                
-        //     }            
-
-        //     // Adder is just to push back the points that we start from when we do the Matrix block process
-        //     // To fill in the mission wp
-        //     int adder = 0;
-        //     // Segment mission_wp into wp
-        //     for (int j = 0; j < mission_changes.size(); j++)
-        //     {
-        //         mission_wp.push_back(wp.block(0,adder,3,mission_changes[j])); 
-        //         adder += mission_changes[j];
-        //     }
-        //     printf("%s[main.cpp] Segment wp to wp vector, mission size %lu! \n", KBLU, mission_wp.size());
-        // }
-        // else
-        // {
-        //     // We should check whether is there any mission message 
-        //     if (ros::Time::now().toSec() - mission_previous_message_time.toSec() > 5.5)
-        //     {
-        //         taskmaster::uav_task = kHover;
-        //         printf("%s[main.cpp] Reject Mission with 0 waypoint message! \n", KRED);
-        //         last_mission_pos = global_pos;
-        //         last_mission_yaw = yaw_nwu;
-        //         break;
-        //     }
-        // }
-
         // Mission changes is the switch in missions
         if (mission_mode[mission_type_count] != bypass)
         {
@@ -433,6 +376,11 @@ void taskmaster::uavCommandCallBack(int msg)
             TrajectoryGeneration(Vector3d (uav_global_pose.pose.position.x, 
                 uav_global_pose.pose.position.y, uav_global_pose.pose.position.z), 
                 mission_wp[mission_type_count], kHover, kMission, mission_mode[mission_type_count]);             
+        }
+        else
+        {
+            bypass_initialize = false;
+            bypass_init_time = -1.0; // Not initialized condition for time
         }
 
         /** 
@@ -818,6 +766,19 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
             {
                 // If Mission is in bypass we just use time
                 last_request_timer = ros::Time::now().toSec();
+
+                if (!bypass_initialize)
+                {
+                    if (bypass_init_time < 0)
+                        bypass_init_time = ros::Time::now().toSec();
+                    // To facilitate a buffer so that a non-zero value will not be sent to px4 from the bypass message 
+                    // when the bypass message is calculating a proper message
+                    // approx 0.25s will suffice
+                    if (ros::Time::now().toSec() - bypass_init_time > 0.25)
+                        bypass_initialize = true;
+                    return;
+                }
+                
                 // printf("%s[main.cpp] Bypass Mode activated!\n", KRED);
                 // If bypass_message callback shows long delay, we will return to hover
                 // The vehicle will exit the mode if target setpoints are not received at a rate of > 2Hz
@@ -895,7 +856,13 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         // We killing it with idleness (kindness)
         PublishDesiredControl(Vector3d (home.pose.position.x, home.pose.position.y, home.pose.position.z), 
             kIdle);
-
+        
+        // At the last point we reset it to not takeoff
+        if (uav_task == kIdle)
+        {
+            takeoff_flag = false;
+            printf("%s[main.cpp] Takeoff flag return to false, you can issue takeoff again\n", KRED);
+        }
         // uavDesiredControlHandler(Vector3d (home.pose.position.x,home.pose.position.y,home.pose.position.z), 
             // Vector3d (0,0,0));
 
