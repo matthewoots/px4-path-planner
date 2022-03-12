@@ -82,54 +82,74 @@ public:
 
     std::vector<Vector3d> bspline;
 
-    bool unpack_rrt_params(std::string _file_location)
+    // bool unpack_rrt_params(std::string _file_location)
+    // {
+    //     printf("%s[rrt.h] Trying to open %s \n", KYEL, _file_location.c_str());
+    //     ifstream file(_file_location);
+        
+    //     if (!file)
+    //     {
+    //         printf("%s[rrt.h] File not present! \n", KRED);
+    //         return false;
+    //     }
+    //     printf("%s[rrt.h] Success, found %s \n", KGRN, _file_location.c_str());
+
+    //     io::CSVReader<10> in(_file_location);
+    //     in.read_header(io::ignore_extra_column, "step_size", 
+    //         "obs_threshold", "xybuffer", "zbuffer", "passage_size",
+    //         "min_height", "max_height", "max_tries", "timeout", "z_scale");
+        
+    //     double step_size;
+    //     double obs_threshold;
+    //     double xybuffer;
+    //     double zbuffer;
+    //     double passage_size;
+
+    //     double min_height;
+    //     double max_height;
+    //     int max_tries;
+    //     double timeout;
+    //     double z_scale;
+
+    //     // First pass is to get number of rows
+    //     while (in.read_row(step_size, obs_threshold, xybuffer, zbuffer,
+    //         passage_size, min_height, max_height, max_tries, timeout, z_scale))
+    //     {
+    //         _step_size = step_size;
+    //         _obs_threshold = obs_threshold;
+    //         _xybuffer = xybuffer;
+    //         _zbuffer = zbuffer;
+    //         _passage_size = passage_size;
+
+    //         _min_height = min_height;
+    //         _max_height = max_height;
+    //         _max_tries = max_tries;
+    //         _timeout = timeout;
+    //         _scale_z = z_scale;
+    //     }
+
+    //     return true;
+    // } 
+
+    bool initialize_rrt_params(vector<double> params, int param_size)
     {
-        printf("%s[rrt.h] Trying to open %s \n", KYEL, _file_location.c_str());
-        ifstream file(_file_location);
-        
-        if (!file)
-        {
-            printf("%s[rrt.h] File not present! \n", KRED);
+        if (params.size() != param_size)
             return false;
-        }
-        printf("%s[rrt.h] Success, found %s \n", KGRN, _file_location.c_str());
 
-        io::CSVReader<10> in(_file_location);
-        in.read_header(io::ignore_extra_column, "step_size", 
-            "obs_threshold", "xybuffer", "zbuffer", "passage_size",
-            "min_height", "max_height", "max_tries", "timeout", "z_scale");
-        
-        double step_size;
-        double obs_threshold;
-        double xybuffer;
-        double zbuffer;
-        double passage_size;
+        _step_size = params[0];
+        _obs_threshold = params[1];
+        _xybuffer = params[2];
+        _zbuffer = params[3];
+        _passage_size = params[4];
 
-        double min_height;
-        double max_height;
-        int max_tries;
-        double timeout;
-        double z_scale;
-
-        // First pass is to get number of rows
-        while (in.read_row(step_size, obs_threshold, xybuffer, zbuffer,
-            passage_size, min_height, max_height, max_tries, timeout, z_scale))
-        {
-            _step_size = step_size;
-            _obs_threshold = obs_threshold;
-            _xybuffer = xybuffer;
-            _zbuffer = zbuffer;
-            _passage_size = passage_size;
-
-            _min_height = min_height;
-            _max_height = max_height;
-            _max_tries = max_tries;
-            _timeout = timeout;
-            _scale_z = z_scale;
-        }
+        _min_height = params[5];
+        _max_height = params[6];
+        _max_tries = params[7];
+        _timeout = params[8];
+        _scale_z = params[9];
 
         return true;
-    } 
+    }
 
     bool RRT(sensor_msgs::PointCloud2 pcl_pc, 
     Vector3d start, Vector3d end, vector<VectorXd> no_fly_zone)

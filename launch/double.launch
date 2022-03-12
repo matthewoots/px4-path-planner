@@ -12,6 +12,8 @@
     <arg name="verbose" default="false"/>
     <arg name="paused" default="false"/>
     <arg name="gcs" default="udp://@127.0.0.1"/>
+
+    <remap from="/no_fly_zones" to="/global_planner_nfz"/>
     <!-- Gazebo sim -->
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="gui" value="$(arg gui)"/>
@@ -19,6 +21,7 @@
         <arg name="debug" value="$(arg debug)"/>
         <arg name="verbose" value="$(arg verbose)"/>
         <arg name="paused" value="$(arg paused)"/>
+	<arg name="use_sim_time" value="false"/>
     </include>
     <!-- UAV0 -->
     <group ns="S0">
@@ -26,6 +29,10 @@
         <arg name="ID" value="0"/>
         <arg name="fcu_url" default="udp://:14540@localhost:14580"/>
 	    <arg name="xid" value="S0"/>
+	<remap from="/$(arg xid)/bypass" to="/$(arg xid)/formation/setpoint_raw"/>
+        <remap from="/$(arg xid)/mission" to="/$(arg xid)/global_planner_mission"/>
+	<remap from="/$(arg xid)/global_planner_formation" to="/$(arg xid)/global_planner_mission"/>
+	
         <!-- PX4 SITL and vehicle spawn -->
         <include file="$(find px4)/launch/single_vehicle_spawn.launch">
             <arg name="x" value="0"/>
@@ -54,12 +61,17 @@
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
+<param name="package_directory" value="$(find px4_path_planner)"/>
             <param name="nwu_offset_x" value="0"/>
             <param name="nwu_offset_y" value="0"/>
             <param name="nwu_offset_z" value="0"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization0" output="screen">
-            <param name="agent_id" value="S0"/>
+            <param name="agent_id" value="$(arg xid)"/>
+        </node>
+	<node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone0" output="screen">
+            <param name="agent_id" value="$(arg xid)"/>
+	    <param name="control_mode" value="velocity"/>
         </node>
     </group>
     <!-- UAV1 -->
@@ -68,10 +80,13 @@
         <arg name="ID" value="1"/>
         <arg name="fcu_url" default="udp://:14541@localhost:14581"/>
 	    <arg name="xid" value="S1"/>
+	<remap from="/$(arg xid)/bypass" to="/$(arg xid)/formation/setpoint_raw"/>
+        <remap from="/$(arg xid)/mission" to="/$(arg xid)/global_planner_mission"/>
+	<remap from="/$(arg xid)/global_planner_formation" to="/$(arg xid)/global_planner_mission"/>
         <!-- PX4 SITL and vehicle spawn -->
         <include file="$(find px4)/launch/single_vehicle_spawn.launch">
-            <arg name="x" value="0"/>
-            <arg name="y" value="-1"/>
+            <arg name="x" value="1"/>
+            <arg name="y" value="0"/>
             <arg name="z" value="0"/>
             <arg name="R" value="0"/>
             <arg name="P" value="0"/>
@@ -92,61 +107,24 @@
             <arg name="tgt_component" value="1"/>
         </include>
 	    <!-- PATH PLANNER -->
-	    <node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner0" output="screen">
+	    <node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner1" output="screen">
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
-            <param name="nwu_offset_x" value="-1"/>
-            <param name="nwu_offset_y" value="0"/>
+<param name="package_directory" value="$(find px4_path_planner)"/>
+            <param name="nwu_offset_x" value="0"/>
+            <param name="nwu_offset_y" value="-1"/>
             <param name="nwu_offset_z" value="0"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization1" output="screen">
-            <param name="agent_id" value="S1"/>
+            <param name="agent_id" value="$(arg xid)"/>
+        </node>
+        <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone1" output="screen">
+            <param name="agent_id" value="$(arg xid)"/>
+	    <param name="control_mode" value="velocity"/>
         </node>
     </group>
-    <!-- UAV2 -->
-    <group ns="S2">
-        <!-- MAVROS and vehicle configs -->
-        <arg name="ID" value="2"/>
-        <arg name="fcu_url" default="udp://:14542@localhost:14582"/>
-	    <arg name="xid" value="S2"/>
-        <!-- PX4 SITL and vehicle spawn -->
-        <include file="$(find px4)/launch/single_vehicle_spawn.launch">
-            <arg name="x" value="0"/>
-            <arg name="y" value="1"/>
-            <arg name="z" value="0"/>
-            <arg name="R" value="0"/>
-            <arg name="P" value="0"/>
-            <arg name="Y" value="1.57"/>
-            <arg name="vehicle" value="$(arg vehicle)"/>
-            <arg name="mavlink_udp_port" value="14562"/>
-            <arg name="mavlink_tcp_port" value="4562"/>
-            <arg name="ID" value="$(arg ID)"/>
-            <!-- <arg name="gst_udp_port" value="$(eval 5600 + arg('ID'))"/> -->
-            <!-- <arg name="video_uri" value="$(eval 5600 + arg('ID'))"/> -->
-            <!-- <arg name="mavlink_cam_udp_port" value="$(eval 14530 + arg('ID'))"/> -->
-        </include>
-        <!-- MAVROS -->
-        <include file="$(find mavros)/launch/px4.launch">
-            <arg name="fcu_url" value="$(arg fcu_url)"/>
-            <arg name="gcs_url" value="$(arg gcs)"/>
-            <arg name="tgt_system" value="$(eval 1 + arg('ID'))"/>
-            <arg name="tgt_component" value="1"/>
-        </include>
-        <!-- PATH PLANNER -->
-	    <node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner0" output="screen">
-		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
-			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
-			<param name="agent_id" value="$(arg xid )"/>
-            <param name="nwu_offset_x" value="1"/>
-            <param name="nwu_offset_y" value="0"/>
-            <param name="nwu_offset_z" value="0"/>
-    	</node>
-        <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization2" output="screen">
-            <param name="agent_id" value="S2"/>
-        </node>
-    </group>
-
+    
 	<node type="rviz" name="rviz" pkg="rviz" args="-d $(find px4_path_planner)/rviz/px4_path_planner_multi.rviz" />
     
 </launch>

@@ -89,13 +89,13 @@ add_executable(${PROJECT_NAME}_visualization_node
 src/visualization/bspline_visualization.cpp
 )
 
-add_executable(${PROJECT_NAME}_bspline_test 
-src/bspline/bspline_test.cpp 
-)
+#add_executable(${PROJECT_NAME}_bspline_test 
+#src/bspline/bspline_test.cpp 
+#)
 
-add_executable(${PROJECT_NAME}_bspline_test_functions
-src/bspline/bspline_test_functions.cpp 
-)
+#add_executable(${PROJECT_NAME}_bspline_test_functions
+#src/bspline/bspline_test_functions.cpp 
+#)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -105,7 +105,8 @@ src/bspline/bspline_test_functions.cpp
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_visualization_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
@@ -117,10 +118,10 @@ target_link_libraries(${PROJECT_NAME}_visualization_node
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(${PROJECT_NAME}_bspline_test 
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(${PROJECT_NAME}_bspline_test 
+#  ${catkin_LIBRARIES}
+#)
 
-target_link_libraries(${PROJECT_NAME}_bspline_test_functions 
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(${PROJECT_NAME}_bspline_test_functions 
+#  ${catkin_LIBRARIES}
+#)

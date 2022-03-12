@@ -130,20 +130,20 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     // uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
     //     "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);
-    /** 
-    * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
-    */
-    mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
-        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
+    
     /** 
     * @brief Handles bypass message from mavros_msgs::PositionTarget type
     */
     bypass_msg_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
         "/" + _id + "/bypass", 1, &taskmaster::bypassCommandCallback, this);
 
-    pcl2_msg_sub = _nh.subscribe<sensor_msgs::PointCloud2>(
-        "/cloud_pcd", 1,  boost::bind(&taskmaster::pcl2Callback, this, _1));
-
+    
+    /* ------------ Subscribe from missionmanager ------------ */
+    /** 
+    * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
+    */
+    mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
     /** 
     * @brief Handles no fly zone float64 array 1D x_min, x_max, y_min, y_max
     */
@@ -154,11 +154,22 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     */
     mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
         "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
+    
+
+    /* ------------ Subscribe from swarm param ------------ */
     /** 
-    * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
+    * @brief Handles formation parameters from float64 array
     */
-    mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
-        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
+    formation_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/param/formation_settings", 1, &taskmaster::formationParamMsgCallBack, this);
+    /** 
+    * @brief Handles solo parameters from float64 array
+    */
+    solo_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
+        "/param/solo_settings", 1, &taskmaster::soloParamMsgCallBack, this);
+    pcl2_msg_sub = _nh.subscribe<sensor_msgs::PointCloud2>(
+        "/param/pcl", 1,  boost::bind(&taskmaster::pcl2Callback, this, _1));
+
 
 
     /* ------------ Publishers ------------ */

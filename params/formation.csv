@@ -1,2 +1,0 @@
-step_size, obs_threshold, xybuffer, zbuffer, passage_size, min_height, max_height, max_tries, timeout, z_scale
-2.0, 5.4, 0.0, 4.75, 0.25, 1.0, 4.75, 25, 1.0, 5.4

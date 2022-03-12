@@ -114,7 +114,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 164; 0; 0
+      Max Intensity: 4096
       Min Color: 0; 0; 0
+      Min Intensity: 0
       Name: PointCloud2
       Position Transformer: XYZ
       Queue Size: 10
@@ -122,7 +124,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /cloud_pcd
+      Topic: /param/pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -178,10 +180,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3847964406013489
+      Pitch: 0.3697964549064636
       Target Frame: <Fixed Frame>
       Value: ThirdPersonFollower (rviz)
-      Yaw: 3.1204798221588135
+      Yaw: 3.055478811264038
     Saved: ~
 Window Geometry:
   Displays:
@@ -199,5 +201,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1267
-  X: 71
-  Y: 27
+  X: 557
+  Y: 215

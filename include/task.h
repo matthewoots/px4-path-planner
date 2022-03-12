@@ -79,6 +79,8 @@ using namespace std;
 #define HOME 4
 #define LAND 5
 
+#define rrt_param_size 10
+
 enum VehicleTask
 {
     kIdle,
@@ -104,6 +106,7 @@ private:
 
     ros::Subscriber state_sub, uav_pose_sub, uav_vel_sub, uav_cmd_sub;
     ros::Subscriber mission_msg_sub, bypass_msg_sub, pcl2_msg_sub, no_fly_zone_sub;
+    ros::Subscriber solo_msg_sub, formation_msg_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
@@ -150,6 +153,7 @@ private:
 
     bool formation_mission_mode = false;
     vector<VectorXd> no_fly_zone;
+    vector<double> formation_param, solo_param;
 
     bool bypass_initialize = false;
     double bypass_init_time = -1.0; // Not initialized condition for time
@@ -206,6 +210,8 @@ private:
     };
 
     vector<bspline_assembly> bspline_vector;
+
+
 
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
@@ -480,6 +486,34 @@ public:
 
     }
 
+    /** @brief Handles formation parameters from float64 array */
+    void formationParamMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
+    {
+        std_msgs::Float32MultiArray multi_array = *msg;
+        
+        formation_param.clear();
+        for (int i = 0; i < multi_array.data.size(); i++)
+        {
+            formation_param.push_back((double)multi_array.data[i]);
+        }
+        printf("%s[task.h] RRT Formation Param Msg received! \n", KGRN);
+    }
+
+    /** @brief Handles solo parameters from float64 array */
+    void soloParamMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
+    {
+        std_msgs::Float32MultiArray multi_array = *msg;
+        
+        solo_param.clear();
+        for (int i = 0; i < multi_array.data.size(); i++)
+        {
+            solo_param.push_back((double)multi_array.data[i]);
+        }
+        printf("%s[task.h] RRT Solo Param Msg received! \n", KGRN);
+    }
+
+
+
     /** @brief Send Desired Command to PX4 via Mavros (Using Vector3d)*/
     void uavDesiredControlHandler(Vector3d command_pose, 
         Vector3d command_vel, 
@@ -606,17 +640,30 @@ public:
         // Add RRT here before we set path
         if (_mode == bspline_avoid || _mode == bspline_avoid_opt)
         {
-            rrt_sample rrt_node; std::string rrt_params;
+            // rrt_sample rrt_node; std::string rrt_params;
+            // if (formation_mission_mode)
+            //     rrt_params = _params_directory + "/formation.csv";
+            // else
+            //     rrt_params = _params_directory + "/solo.csv";
+            // if (!rrt_node.unpack_rrt_params(rrt_params))
+            // {
+            //     printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);
+            //     taskmaster::uav_task = _default;
+            //     return;
+            // }
+
+            rrt_sample rrt_node; vector<double> rrt_params;
             if (formation_mission_mode)
-                rrt_params = _params_directory + "/formation.csv";
+                rrt_params = formation_param;
             else
-                rrt_params = _params_directory + "/solo.csv";
-            if (!rrt_node.unpack_rrt_params(rrt_params))
+                rrt_params = solo_param;
+            if (!rrt_node.initialize_rrt_params(rrt_params, (int)rrt_param_size))
             {
                 printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);
                 taskmaster::uav_task = _default;
                 return;
             }
+
             for (int i = 0; i < no_fly_zone.size(); i++)
             {
                 VectorXd no_fly_zone_single = VectorXd::Zero(4);
