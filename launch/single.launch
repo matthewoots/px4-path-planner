@@ -68,9 +68,10 @@
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization0" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
         </node>
-	<node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone0" output="screen">
+	    <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone0" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
-	    <param name="control_mode" value="velocity"/>
+            <param name="control_mode" value="velocity"/>
+            <!-- <param name="velocity_gain" value="0.001"/> -->
         </node>
 
 		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization" output="screen">

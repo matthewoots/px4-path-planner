@@ -170,6 +170,13 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     pcl2_msg_sub = _nh.subscribe<sensor_msgs::PointCloud2>(
         "/param/pcl", 1,  boost::bind(&taskmaster::pcl2Callback, this, _1));
 
+    /* ------------ Subscribe from re-localization ------------ */
+    /** 
+    * @brief Get from Relocalization module, the corrected pose
+    */
+    relocalization_gp_sub = _nh.subscribe<geometry_msgs::PoseStamped>(
+        "/" + _id + "/relocalization/global_pose", 1, &taskmaster::rlGlobalPoseCallback, this);
+
 
 
     /* ------------ Publishers ------------ */

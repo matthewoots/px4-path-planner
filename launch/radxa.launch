@@ -35,6 +35,7 @@ echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}"
         <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone$(arg _uav_idx)" output="screen">
             <param name="agent_id" value="$(arg _uav_id)"/>
 	        <param name="control_mode" value="velocity"/>
+            <!-- <param name="velocity_gain" value="0.001"/> -->
         </node>
 
 		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization$(arg _uav_idx)" output="screen">

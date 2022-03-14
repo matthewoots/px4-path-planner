@@ -106,7 +106,7 @@ private:
 
     ros::Subscriber state_sub, uav_pose_sub, uav_vel_sub, uav_cmd_sub;
     ros::Subscriber mission_msg_sub, bypass_msg_sub, pcl2_msg_sub, no_fly_zone_sub;
-    ros::Subscriber solo_msg_sub, formation_msg_sub;
+    ros::Subscriber solo_msg_sub, formation_msg_sub, relocalization_gp_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
@@ -159,6 +159,9 @@ private:
     double bypass_init_time = -1.0; // Not initialized condition for time
 
     vector<int> uav_id;
+
+    Vector3d rl_pose_offset = Vector3d::Zero();
+    double rl_yaw_offset = 0.0;
     
     std::string _wp_file_location;
     std::string _id;
@@ -311,8 +314,8 @@ public:
             uav_pose.pose.orientation.z, uav_pose.pose.orientation.w);
         tf::Matrix3x3 m_enu(q_enu);
         m_enu.getRPY(roll, pitch, yaw);
-    //     std::cout << KYEL << "[task.h] enu_yaw=" << KNRM <<
-    // yaw << std::endl;
+        //     std::cout << KYEL << "[task.h] enu_yaw=" << KNRM <<
+        // yaw << std::endl;
 
         // Convert from ENU to global NWU
         uav_global_pose = convert_enu_to_global_nwu(uav_pose);
@@ -322,8 +325,15 @@ public:
             uav_global_pose.pose.orientation.z, uav_global_pose.pose.orientation.w);
         tf::Matrix3x3 m_nwu(q_nwu);
         m_nwu.getRPY(roll_nwu, pitch_nwu, yaw_nwu);
-    //     std::cout << KGRN << "[task.h] nwu_yaw=" << KNRM <<
-    // yaw_nwu << std::endl;
+
+        // Factor in changes from relocalization
+        uav_global_pose.pose.position.x += rl_pose_offset.x();
+        uav_global_pose.pose.position.y += rl_pose_offset.y();
+        uav_global_pose.pose.position.z += rl_pose_offset.z();
+        yaw_nwu +=  rl_yaw_offset;
+
+        //     std::cout << KGRN << "[task.h] nwu_yaw=" << KNRM <<
+        // yaw_nwu << std::endl;
 
         // Global in NWU frame in Vector3d
         global_pos.x() = (double)uav_global_pose.pose.position.x;
@@ -331,6 +341,27 @@ public:
         global_pos.z() = (double)uav_global_pose.pose.position.z;
 
         global_pos_pub.publish(uav_global_pose);
+    }
+
+    /** @brief Get from Relocalization module, the corrected pose */
+    void rlGlobalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
+    {
+        // Relocalization in NWU frame
+        geometry_msgs::PoseStamped rl_global_pose = *msg;
+        Vector3d rl_q_nwu;
+
+        // Writes directly to the rl_pose_offset, may have jerk
+        rl_pose_offset.x() = (double)rl_global_pose.pose.position.x - global_pos.x();
+        rl_pose_offset.y() = (double)rl_global_pose.pose.position.y - global_pos.y();
+        rl_pose_offset.z() = (double)rl_global_pose.pose.position.z - global_pos.z();
+
+        tf::Quaternion q_nwu(
+            rl_global_pose.pose.orientation.x, rl_global_pose.pose.orientation.y,
+            rl_global_pose.pose.orientation.z, rl_global_pose.pose.orientation.w);
+        tf::Matrix3x3 m_nwu(q_nwu);
+        m_nwu.getRPY(rl_q_nwu.x(), rl_q_nwu.y(), rl_q_nwu.z());
+
+        rl_yaw_offset = yaw_nwu - rl_q_nwu.z();
     }
 
     /** @brief Get bypass command message */
