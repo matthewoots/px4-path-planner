@@ -78,6 +78,10 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _send_desired_interval = 1 / _trajectory_pub_rate;
     _send_optimization_interval = 1 / _optimization_rate;
 
+    std::string copy_id = _id; 
+    string uav_id_char = copy_id.erase(0,1); // removes first character
+    uav_id = stoi(uav_id_char);
+
     printf("%s------------- Planner Parameter ------------- \n", KYEL);
     printf("%s  _unpack_from_local_file =%s %s \n", KBLU, KNRM, _unpack_from_local_file ? "true" : "false");
     printf("%s  _setpoint_raw_mode =%s %s \n", KBLU, KNRM, _setpoint_raw_mode ? "true" : "false");
@@ -91,6 +95,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s  _wp_file_location =%s %s \n", KBLU, KNRM, _wp_file_location.c_str());
     printf("%s  _package_directory =%s %s \n", KBLU, KNRM, _package_directory.c_str());
     printf("%s  _id =%s %s \n", KBLU, KNRM, _id.c_str());
+    printf("%s  uav_id =%s %d \n", KBLU, KNRM, uav_id);
     printf("%s  global_offset =%s [%lf %lf %lf] \n\n", KBLU, KNRM, 
         global_offset.x(), global_offset.y(), global_offset.z());
 
@@ -126,10 +131,10 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     uav_vel_sub = _nh.subscribe<geometry_msgs::TwistStamped>(
         "/" + _id + "/mavros/local_position/velocity_local", 1, &taskmaster::uavVelCallback, this);
     /** 
-    * @brief Handles mission from user command, handles through enum values
+    * @brief Get all uav agent info such as bspline with this callback
     */
-    // uav_cmd_sub = _nh.subscribe<std_msgs::Byte>(
-    //     "/" + _id + "/user", 1, &taskmaster::uavCommandCallBack, this);
+     multi_uav_sub = _nh.subscribe<px4_path_planner::multi_agent>(
+         "/multi_agent_trajectory", 50, &taskmaster::multiAgentInfoBsplineCallBack, this);
     
     /** 
     * @brief Handles bypass message from mavros_msgs::PositionTarget type
@@ -207,6 +212,9 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
         "/" + _id + "/path/opt_bspline", 10);
     
 
+    multi_uav_pub = _nh.advertise<px4_path_planner::multi_agent>(
+        "/multi_agent_trajectory", 10);
+
 
     /* ------------ Service Clients ------------ */
     /** 
@@ -229,6 +237,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     mission_timer = _nh.createTimer(ros::Duration(_send_desired_interval), &taskmaster::missionTimer, this, false, false);
     opt_timer = _nh.createTimer(ros::Duration(_send_optimization_interval), &taskmaster::optimization, this, false, false);
     hover_timer = _nh.createTimer(ros::Duration(_send_desired_interval), &taskmaster::hoverTimer, this, false, false);
+    update_drone_traj_timer = _nh.createTimer(ros::Duration(_send_optimization_interval), &taskmaster::trajUpdate, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
 }
@@ -295,6 +304,7 @@ void taskmaster::uavCommandCallBack(int msg)
             printf("%s[main.cpp] Offboard mode activated going to run takeoff \n", KBLU);
             mission_timer.start();
             hover_timer.start();
+            update_drone_traj_timer.start();
             printf("%s[main.cpp] Mission timer started! \n", KGRN);
             takeoff_flag = true;
         }
@@ -376,11 +386,22 @@ void taskmaster::uavCommandCallBack(int msg)
 
         // Error when mission mode is sent while in another mission mode this is disastrous
         // Throw the mission into hover while it calculates
-        if (!task_complete)
+        // if (!task_complete)
+        // {
+        //     uav_task = kHover;
+        //     last_mission_pos = global_pos;
+        //     last_mission_yaw = yaw_nwu;
+        //     printf("%s[main.cpp] Task is not complete! \n", KRED);
+        //     break;
+        // }
+
+        if (param_check < 2)
         {
-            uav_task = kHover;
+            taskmaster::uav_task = kHover;
             last_mission_pos = global_pos;
             last_mission_yaw = yaw_nwu;
+            printf("%s[main.cpp] Formation and Solo params are not received! Return to Hover! \n", KRED);
+            break;
         }
 
         // Mission changes is the switch in missions
@@ -649,6 +670,81 @@ void taskmaster::optimization(const ros::TimerEvent &)
 
 }
 
+void taskmaster::trajUpdate(const ros::TimerEvent &)
+{
+    std::lock_guard<std::mutex> _lock(uavsTrajMutex);
+    
+    // Initialization if id is not found
+    if (traj_msg_idx < 0)
+    {
+        px4_path_planner::agent agent_msg;
+        // std_msgs/Header header
+        // int32 id
+        // int32 task
+        // px4_path_planner/Bspline bs
+        agent_msg.header.stamp = ros::Time::now();
+        agent_msg.id = uav_id;
+        agent_msg.task = uav_task;
+
+        if (uav_task != kMission)
+            agent_msg.bs.global_control_points.push_back(uav_global_pose.pose.position);
+
+        multi_uav_msg.agent.push_back(agent_msg);
+        multi_uav_pub.publish(multi_uav_msg);
+        return;
+    }
+
+    px4_path_planner::Bspline bspline;
+
+    // If there is no rows in knots, then there is not trajectory to publish
+    if (traj.GetKnots().rows() <= 1)
+        bspline.global_control_points.push_back(uav_global_pose.pose.position);
+
+    // Else there may be a trajectory to publish but we have to check whether the data is outdated
+    else 
+    {
+        MatrixXd gcp = MatrixXd (traj.GetGlobalControlPoints());
+        VectorXd knots = VectorXd (traj.GetKnots());
+        if (ros::Time::now().toSec() - knots[0] < 0 || ros::Time::now().toSec() - knots[knots.rows()-1] > 0)
+            bspline.global_control_points.push_back(uav_global_pose.pose.position);
+        else
+        {
+            // If all is good we can update the message
+            bspline.order = traj.GetOrder();
+            bspline.knot_division = traj.GetKnotDivision();
+
+            // printf("%s[task.h] Publishing gcp \n", KGRN);
+            bspline.global_control_points.reserve(gcp.cols());
+
+            for (int i = 0; i < gcp.cols(); i++)
+            {
+                geometry_msgs::Point pt;
+                pt.x = gcp(0,i);
+                pt.y = gcp(1,i);
+                pt.z = gcp(2,i);
+                // std::cout << KGRN << "[main.cpp] CP \n" << KNRM << pt << std::endl;
+                bspline.global_control_points.push_back(pt);
+            }
+            // std::cout << KGRN << "[main.cpp] cp_size \n" << KNRM << bspline.global_control_points.size() << std::endl;
+
+            // printf("%s[main.cpp] Publishing knots \n", KGRN);
+            bspline.knot.reserve(knots.rows());
+            for (int j = 0; j < knots.size(); j++)
+            {
+                bspline.knot.push_back((float)knots[j]);
+            }
+        } 
+    }
+    multi_uav_msg.agent[traj_msg_idx].header.seq = traj_seq;
+
+    traj_seq++;
+
+    multi_uav_msg.agent[traj_msg_idx].bs = bspline;
+    multi_uav_msg.agent[traj_msg_idx].header.stamp = ros::Time::now();
+    multi_uav_msg.agent[traj_msg_idx].task = uav_task;
+    multi_uav_pub.publish(multi_uav_msg);
+}
+
 void taskmaster::hoverTimer(const ros::TimerEvent &)
 {
     switch (uav_task)
@@ -689,20 +785,6 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         PublishDesiredControl(takeoff_pos, kHover);        
         break;
     }
-
-    // case kHover:
-    // {
-    //     if (ros::Time::now().toSec() - last_request_timer > _send_desired_interval)
-    //     {
-    //         uavDesiredControlHandler(last_mission_pos, 
-    //         Vector3d (0,0,0),
-    //         Vector3d (0,0,0),
-    //         last_mission_yaw);
-    //         last_request_timer = ros::Time::now().toSec();
-    //     }
-
-    //     break;
-    // }
 
     case kHome:
     {
@@ -881,35 +963,6 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
             takeoff_flag = false;
             printf("%s[main.cpp] Takeoff flag return to false, you can issue takeoff again\n", KRED);
         }
-        // uavDesiredControlHandler(Vector3d (home.pose.position.x,home.pose.position.y,home.pose.position.z), 
-            // Vector3d (0,0,0));
-
-        /** @brief Currently switching to AUTO.LAND and disarm does not work so well **/
-        /** @brief Currently switching to AUTO.LAND does not work so we will use offboard then idle **/
-        // ros::Rate rate(20.0);
-        // mavros_msgs::SetMode offb_set_mode;
-        // offb_set_mode.request.custom_mode = "AUTO.LAND";
-
-        // bool is_mode_ready = false;
-        // ros::Time last_request_inner = ros::Time::now();
-
-        // while (!is_mode_ready)
-        // {
-        //     if (uav_current_state.mode != "AUTO.LAND" &&
-        //         (ros::Time::now() - last_request_inner > ros::Duration(2.0)))
-        //     {
-        //         printf("%s[main.cpp] Try set AUTO.LAND \n", KYEL);
-        //         if (set_mode_client.call(offb_set_mode) &&
-        //             offb_set_mode.response.mode_sent)
-        //         {
-        //             printf("%s[main.cpp] AUTO.LAND Enabled \n", KGRN);
-        //             is_mode_ready = true;
-        //         }
-        //         last_request_inner = ros::Time::now();
-        //     }
-        //     ros::spinOnce();
-        //     rate.sleep();
-        // }
         
         break;
     }

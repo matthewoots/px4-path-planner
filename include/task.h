@@ -58,6 +58,7 @@
 
 #include "px4_path_planner/Bspline.h"
 #include "px4_path_planner/agent.h"
+#include "px4_path_planner/multi_agent.h"
 
 #include <tf/tf.h>
 
@@ -107,16 +108,18 @@ private:
     ros::Subscriber state_sub, uav_pose_sub, uav_vel_sub, uav_cmd_sub;
     ros::Subscriber mission_msg_sub, bypass_msg_sub, pcl2_msg_sub, no_fly_zone_sub;
     ros::Subscriber solo_msg_sub, formation_msg_sub, relocalization_gp_sub;
+    ros::Subscriber multi_uav_sub;
 
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
+    ros::Publisher multi_uav_pub; 
 
     ros::Publisher bspline_pub, global_pos_pub, opt_bspline_pub;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
 
-    ros::Timer mission_timer, opt_timer, hover_timer;
+    ros::Timer mission_timer, opt_timer, hover_timer, update_drone_traj_timer;
 
     double _weight_smooth, _weight_feas, _weight_term; 
     double _weight_static, _weight_reci;
@@ -155,10 +158,12 @@ private:
     vector<VectorXd> no_fly_zone;
     vector<double> formation_param, solo_param;
 
+    int param_check = 0;
+
     bool bypass_initialize = false;
     double bypass_init_time = -1.0; // Not initialized condition for time
 
-    vector<int> uav_id;
+    int uav_id;
 
     Vector3d rl_pose_offset = Vector3d::Zero();
     double rl_yaw_offset = 0.0;
@@ -207,14 +212,18 @@ private:
 
     struct bspline_assembly 
     {
-        int agent_id;
+        double msg_time;
         vector<double> knot_vector;
         vector<Vector3d> control_points;
     };
 
-    vector<bspline_assembly> bspline_vector;
+    // Trajectory
+    std::mutex uavsTrajMutex;
+    std::map<int, bspline_assembly> uavsTraj;    
 
-
+    px4_path_planner::multi_agent multi_uav_msg;
+    int traj_msg_idx = -1;
+    int traj_seq = 0;
 
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
@@ -224,6 +233,7 @@ public:
 
     void initialisation();
 
+    void trajUpdate(const ros::TimerEvent &);
     void optimization(const ros::TimerEvent &);
     void hoverTimer(const ros::TimerEvent &);
     void missionTimer(const ros::TimerEvent &);
@@ -261,34 +271,62 @@ public:
         // Initialise state at the beginning
         if (!_initialised)
             taskmaster::initialisation();
+        if (!uav_current_state.armed)
+        {
+            takeoff_flag = false;
+            // printf("%s[main.cpp] Disarmed, takeoff flag set to false\n", KRED);
+        }
     }
 
-    // We should reset the agent data at everytime we call it
-    /** @brief Get Agent info with bspline callback */
-    void agentInfoBsplineCallBack(const px4_path_planner::agent::ConstPtr &msg)
+    /** @brief Get all uav agent info such as bspline with this callback */
+    void multiAgentInfoBsplineCallBack(const px4_path_planner::multi_agent::ConstPtr &msg)
     {
-        px4_path_planner::agent agent_bspline = *msg;
-        px4_path_planner::Bspline bspline_msg = agent_bspline.bs;
-        // int32 order
-        // int32 knot_division
-        // float64[] knot
-        // geometry_msgs/Point[] global_control_points
-        bspline_assembly tmp_bs;
-        tmp_bs.agent_id = agent_bspline.id;
-        
-        for (int i = 0; i < bspline_msg.knot.size(); i++)
-            tmp_bs.knot_vector.push_back(bspline_msg.knot[i]);
+        std::lock_guard<std::mutex> _lock(uavsTrajMutex);
+        vector<int> id_list;
 
-        for (int i = 0; i < bspline_msg.global_control_points.size(); i++)
+        multi_uav_msg = *msg;
+        
+        for (int i = 0; i < multi_uav_msg.agent.size(); i++)
         {
-            Vector3d cp_tmp;
-            cp_tmp.x() = bspline_msg.global_control_points[i].x;
-            cp_tmp.y() = bspline_msg.global_control_points[i].y;
-            cp_tmp.z() = bspline_msg.global_control_points[i].z;
-            tmp_bs.control_points.push_back(cp_tmp);
+            
+            id_list.push_back(multi_uav_msg.agent[i].id);
+            bspline_assembly tmp_bs;
+
+            if (multi_uav_msg.agent[i].id == uav_id)
+            {
+                // We found our own idx so we can add our own message to this idx
+                traj_msg_idx = i;
+                continue;
+            }
+
+            px4_path_planner::Bspline bspline_msg = multi_uav_msg.agent[i].bs;
+
+            for (int j = 0; j < bspline_msg.knot.size(); j++)
+                tmp_bs.knot_vector.push_back(bspline_msg.knot[j]);
+
+            for (int j = 0; j < bspline_msg.global_control_points.size(); j++)
+            {
+                Vector3d cp_tmp;
+                cp_tmp.x() = bspline_msg.global_control_points[j].x;
+                cp_tmp.y() = bspline_msg.global_control_points[j].y;
+                cp_tmp.z() = bspline_msg.global_control_points[j].z;
+                tmp_bs.control_points.push_back(cp_tmp);
+            }
+
+            // If key does exist
+            if (uavsTraj.count(multi_uav_msg.agent[i].id))
+            {
+                // Let us check for the message and see if the message is outdated from the one we have
+                // If new message stamp is newer = We update the map
+                if ( (multi_uav_msg.agent[i].header.stamp).toSec() - uavsTraj[multi_uav_msg.agent[i].id].msg_time > 0 )
+                    uavsTraj[multi_uav_msg.agent[i].id] = tmp_bs;
+            }
+            // If key does not exist = If map is not updated with new data
+            else
+                uavsTraj.insert(std::map<int, bspline_assembly>::value_type(multi_uav_msg.agent[i].id, tmp_bs));
         }
 
-        bspline_vector.push_back(tmp_bs);
+
     }
 
     /** @brief Get current uav velocity */
@@ -354,6 +392,8 @@ public:
         rl_pose_offset.x() = (double)rl_global_pose.pose.position.x - global_pos.x();
         rl_pose_offset.y() = (double)rl_global_pose.pose.position.y - global_pos.y();
         rl_pose_offset.z() = (double)rl_global_pose.pose.position.z - global_pos.z();
+
+        // @Todo Match to timestamped
 
         tf::Quaternion q_nwu(
             rl_global_pose.pose.orientation.x, rl_global_pose.pose.orientation.y,
@@ -527,6 +567,7 @@ public:
         {
             formation_param.push_back((double)multi_array.data[i]);
         }
+        param_check++;
         printf("%s[task.h] RRT Formation Param Msg received! \n", KGRN);
     }
 
@@ -540,6 +581,7 @@ public:
         {
             solo_param.push_back((double)multi_array.data[i]);
         }
+        param_check++;
         printf("%s[task.h] RRT Solo Param Msg received! \n", KGRN);
     }
 

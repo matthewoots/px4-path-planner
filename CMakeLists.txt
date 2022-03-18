@@ -25,6 +25,7 @@ add_message_files(
   FILES
   Bspline.msg
   agent.msg
+  multi_agent.msg
 )
 
 # Generate added messages
