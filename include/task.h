@@ -56,6 +56,8 @@
 #include <std_msgs/Byte.h>
 #include <std_msgs/Float32MultiArray.h>
 
+#include <nav_msgs/Odometry.h>
+
 #include "px4_path_planner/Bspline.h"
 #include "px4_path_planner/agent.h"
 #include "px4_path_planner/multi_agent.h"
@@ -113,6 +115,7 @@ private:
     ros::Publisher local_pos_pub; // Only publishes position
     ros::Publisher local_pos_raw_pub; // Publish setpoint_local_raw, either P,V or A
     ros::Publisher multi_uav_pub; 
+    ros::Publisher local_pos_nwu_pub;
 
     ros::Publisher bspline_pub, global_pos_pub, opt_bspline_pub;
 
@@ -379,6 +382,14 @@ public:
         global_pos.z() = (double)uav_global_pose.pose.position.z;
 
         global_pos_pub.publish(uav_global_pose);
+
+        nav_msgs::Odometry uav_nwu_local_odom;
+
+        uav_nwu_local_odom.header.stamp = uav_global_pose.header.stamp;
+        uav_nwu_local_odom.pose.pose.position = uav_global_pose.pose.position;
+        uav_nwu_local_odom.pose.pose.orientation = uav_global_pose.pose.orientation;
+
+        local_pos_nwu_pub.publish(uav_nwu_local_odom);
     }
 
     /** @brief Get from Relocalization module, the corrected pose */
@@ -895,8 +906,8 @@ public:
 
         transform.transform.translation = t;
         transform.transform.rotation = q;
-        transform.child_frame_id = "/base";
-        transform.header.frame_id = "/map";
+        transform.child_frame_id = "/base_nwu";
+        transform.header.frame_id = "/map_nwu";
 
         tf2::doTransform(_p, poseStamped, transform);
 
@@ -915,6 +926,19 @@ public:
         nwu_tmp.pose.position.x += global_offset.x();
         nwu_tmp.pose.position.y += global_offset.y();
         nwu_tmp.pose.position.z += global_offset.z();
+
+        return nwu_tmp;
+    }
+
+     /* 
+    * @brief Transform PoseStamped from ENU to Global NWU
+    */
+    geometry_msgs::PoseStamped convert_enu_to_nwu(geometry_msgs::PoseStamped enu_pose)
+    {
+        // Convert from ENU to Global NWU
+        geometry_msgs::PoseStamped nwu_tmp = transform_pose_stamped(enu_pose, Vector3d(0,0,-90.0));
+        nwu_tmp.header.stamp.sec = enu_pose.header.stamp.sec; 
+        nwu_tmp.header.stamp.nsec = enu_pose.header.stamp.nsec; 
 
         return nwu_tmp;
     }

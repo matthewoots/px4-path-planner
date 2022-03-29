@@ -55,7 +55,7 @@ void bsplineCallback(const px4_path_planner::Bspline::ConstPtr &msg)
   px4_path_planner::Bspline bs = *msg;
 
   visualization_msgs::Marker control_points, line_strip, line_list;
-  control_points.header.frame_id = line_strip.header.frame_id = "/map";
+  control_points.header.frame_id = line_strip.header.frame_id = "/map_nwu";
   control_points.header.stamp = line_strip.header.stamp = ros::Time::now();
   control_points.ns = line_strip.ns = "bspline_visualization";
   control_points.action = line_strip.action = visualization_msgs::Marker::ADD;
@@ -110,7 +110,7 @@ void optbsplineCallback(const px4_path_planner::Bspline::ConstPtr &msg)
   px4_path_planner::Bspline bs = *msg;
 
   visualization_msgs::Marker control_points, line_strip, line_list;
-  control_points.header.frame_id = line_strip.header.frame_id = "/map";
+  control_points.header.frame_id = line_strip.header.frame_id = "/map_nwu";
   control_points.header.stamp = line_strip.header.stamp = ros::Time::now();
   control_points.ns = line_strip.ns = "opt_bspline_visualization";
   control_points.action = line_strip.action = visualization_msgs::Marker::ADD;
@@ -166,7 +166,7 @@ void globalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
   geometry_msgs::PoseStamped pose_msg = *msg;
   
   visualization_msgs::Marker text_points;
-  text_points.header.frame_id = "/map";
+  text_points.header.frame_id = "/map_nwu";
   text_points.header.stamp = ros::Time::now();
   text_points.ns = "pose_visualization_points";
   text_points.action = visualization_msgs::Marker::ADD;

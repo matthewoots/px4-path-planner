@@ -9,8 +9,10 @@ echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}"
 <launch>
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="_uav_idx" value="$(env HOSTNAME)" />
-    <arg name="_fcu_url" value="/dev/ttyAML0:500000" />
+    <arg name="_fcu_url" value="/dev/ttyAML0:230400" />
     <arg name="_gcs_url" value="udp://@192.168.31.84" />
+
+    <remap from="/$(arg _uav_id)/mavros/odometry/out" to="/$(arg _uav_id)/basalt/odom_ned"/>
 
     <group ns="$(arg _uav_id)">
         <remap from="/$(arg _uav_id)/bypass" to="/$(arg _uav_id)/formation/setpoint_raw"/>

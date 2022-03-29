@@ -196,6 +196,11 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     local_pos_raw_pub = _nh.advertise<mavros_msgs::PositionTarget>(
         "/" + _id + "/mavros/setpoint_raw/local", 10);
     /** 
+    * @brief Publisher that publishes local pose NWU to Mavros
+    */
+    local_pos_nwu_pub = _nh.advertise<nav_msgs::Odometry>(
+        "/" + _id + "/mavros/odom_nwu", 10);
+    /** 
     * @brief Publisher that publishes Bspline
     */
     bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
