@@ -367,6 +367,17 @@ public:
         tf::Matrix3x3 m_nwu(q_nwu);
         m_nwu.getRPY(roll_nwu, pitch_nwu, yaw_nwu);
 
+        geometry_msgs::PoseStamped local_nwu_pose;
+        local_nwu_pose = convert_enu_to_nwu(uav_pose);
+
+        nav_msgs::Odometry uav_nwu_local_odom;
+
+        uav_nwu_local_odom.header.stamp = local_nwu_pose.header.stamp;
+        uav_nwu_local_odom.pose.pose.position = local_nwu_pose.pose.position;
+        uav_nwu_local_odom.pose.pose.orientation = local_nwu_pose.pose.orientation;
+
+        local_pos_nwu_pub.publish(uav_nwu_local_odom);
+
         // Factor in changes from relocalization
         uav_global_pose.pose.position.x += rl_pose_offset.x();
         uav_global_pose.pose.position.y += rl_pose_offset.y();
@@ -382,14 +393,6 @@ public:
         global_pos.z() = (double)uav_global_pose.pose.position.z;
 
         global_pos_pub.publish(uav_global_pose);
-
-        nav_msgs::Odometry uav_nwu_local_odom;
-
-        uav_nwu_local_odom.header.stamp = uav_global_pose.header.stamp;
-        uav_nwu_local_odom.pose.pose.position = uav_global_pose.pose.position;
-        uav_nwu_local_odom.pose.pose.orientation = uav_global_pose.pose.orientation;
-
-        local_pos_nwu_pub.publish(uav_nwu_local_odom);
     }
 
     /** @brief Get from Relocalization module, the corrected pose */
