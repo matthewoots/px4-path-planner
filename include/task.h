@@ -231,6 +231,8 @@ private:
     int traj_msg_idx = -1;
     int traj_seq = 0;
 
+    ros::Time last_pose_time;
+
 public:
     taskmaster(ros::NodeHandle &nodeHandle);
     ~taskmaster();
@@ -347,6 +349,7 @@ public:
     /** @brief Get current uav pose */
     void uavPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     {
+	last_pose_time = ros::Time::now();
         // Local in ENU frame
         uav_pose = *msg;
         current_pos.x() = (double)uav_pose.pose.position.x;
@@ -413,6 +416,11 @@ public:
     /** @brief Get from Relocalization module, the corrected pose */
     void rlGlobalPoseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     {
+	if ((ros::Time::now() - last_pose_time).toSec() > 2.0)
+        {
+            // Do not update
+            return; 
+        }
         // Relocalization in NWU frame
         geometry_msgs::PoseStamped rl_global_pose = *msg;
         Vector3d rl_q_nwu;
@@ -421,7 +429,7 @@ public:
             (double)rl_global_pose.pose.position.y - global_pos.y());
 
         // Correction velocity
-        double correction_error = 0.1;
+        double correction_error = 0.015;
         double distance_error = sqrt(pow(current_correction.x(),2) + pow(current_correction.y(),2));
         
         Vector2d correction_vector;
@@ -429,7 +437,7 @@ public:
         correction_vector.y() = current_correction.y() / distance_error;
         double correction_factor = min(correction_error, distance_error);
 
-        Vector2d global_correction = correction_factor * correction_vector;
+        Vector2d global_correction = 0.90 * correction_factor * correction_vector;
 
         // Writes directly to the rl_pose_offset, may have jerk
         rl_pose_offset.x() += global_correction.x();
