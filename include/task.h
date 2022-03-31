@@ -375,23 +375,23 @@ public:
 
         nav_msgs::Odometry uav_nwu_local_odom;
 
-	uav_nwu_local_odom.header.stamp = local_nwu_pose.header.stamp;
+	    uav_nwu_local_odom.header.stamp = local_nwu_pose.header.stamp;
         uav_nwu_local_odom.header.frame_id = _id + "/odom_nwu";
-	uav_nwu_local_odom.child_frame_id = _id + "/base_link_nwu";
+	    uav_nwu_local_odom.child_frame_id = _id + "/base_link_nwu";
         uav_nwu_local_odom.pose.pose.position = local_nwu_pose.pose.position;
         uav_nwu_local_odom.pose.pose.orientation = local_nwu_pose.pose.orientation;
 
         local_pos_nwu_pub.publish(uav_nwu_local_odom);
 
-	geometry_msgs::TransformStamped tf;
-	tf.header = uav_nwu_local_odom.header;
-	tf.child_frame_id = _id + "/base_link_nwu";
+        geometry_msgs::TransformStamped tf;
+        tf.header = uav_nwu_local_odom.header;
+        tf.child_frame_id = _id + "/base_link_nwu";
         tf.transform.translation.x = uav_nwu_local_odom.pose.pose.position.x;
         tf.transform.translation.y = uav_nwu_local_odom.pose.pose.position.y;
         tf.transform.translation.z = uav_nwu_local_odom.pose.pose.position.z;
         tf.transform.rotation = uav_nwu_local_odom.pose.pose.orientation;
 
-	m_broadcaster.sendTransform(tf);
+	    m_broadcaster.sendTransform(tf);
 
         // Factor in changes from relocalization
         uav_global_pose.pose.position.x += rl_pose_offset.x();
@@ -417,11 +417,25 @@ public:
         geometry_msgs::PoseStamped rl_global_pose = *msg;
         Vector3d rl_q_nwu;
 
+        Vector2d current_correction = Vector2d((double)rl_global_pose.pose.position.x - global_pos.x(), 
+            (double)rl_global_pose.pose.position.y - global_pos.y());
+
+        // Correction velocity
+        double correction_error = 0.1;
+        double distance_error = sqrt(pow(current_correction.x(),2) + pow(current_correction.y(),2));
+        
+        Vector2d correction_vector;
+        correction_vector.x() = current_correction.x() / distance_error;
+        correction_vector.y() = current_correction.y() / distance_error;
+        double correction_factor = min(correction_error, distance_error);
+
+        Vector2d global_correction = correction_factor * correction_vector;
+
         // Writes directly to the rl_pose_offset, may have jerk
-        rl_pose_offset.x() += (double)rl_global_pose.pose.position.x - global_pos.x();
-        rl_pose_offset.y() += (double)rl_global_pose.pose.position.y - global_pos.y();
-        //rl_pose_offset.z() += (double)rl_global_pose.pose.position.z - global_pos.z();
-	rl_pose_offset.z() = 0;
+        rl_pose_offset.x() += global_correction.x();
+        rl_pose_offset.y() += global_correction.y();
+	    rl_pose_offset.z() = 0;
+        // rl_pose_offset.z() += (double)rl_global_pose.pose.position.z - global_pos.z();
         // @Todo Match to timestamped
 
         //tf::Quaternion q_nwu(
@@ -948,8 +962,8 @@ public:
         geometry_msgs::PoseStamped nwu_tmp = transform_pose_stamped(enu_pose, Vector3d(0,0,-90.0));
         nwu_tmp.header.stamp.sec = enu_pose.header.stamp.sec; 
         nwu_tmp.header.stamp.nsec = enu_pose.header.stamp.nsec; 
-        nwu_tmp.pose.position.x += global_offset.x();
-        nwu_tmp.pose.position.y += global_offset.y();
+        nwu_tmp.pose.position.x += global_offset.x() + rl_pose_offset.x();
+        nwu_tmp.pose.position.y += global_offset.y() + rl_pose_offset.y();
         nwu_tmp.pose.position.z += global_offset.z();
 
         return nwu_tmp;
@@ -973,8 +987,8 @@ public:
     */
     geometry_msgs::PoseStamped convert_global_nwu_to_enu(geometry_msgs::PoseStamped global_nwu_pose)
     {
-        global_nwu_pose.pose.position.x -= global_offset.x();
-        global_nwu_pose.pose.position.y -= global_offset.y();
+        global_nwu_pose.pose.position.x -= global_offset.x() - rl_pose_offset.x();
+        global_nwu_pose.pose.position.y -= global_offset.y() - rl_pose_offset.x();
         global_nwu_pose.pose.position.z -= global_offset.z();
         // Convert from ENU to Global NWU
         geometry_msgs::PoseStamped enu_tmp = transform_pose_stamped(global_nwu_pose, Vector3d(0,0,90.0));
