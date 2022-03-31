@@ -54,21 +54,30 @@ class trajectory
 {
 private:
     int _order, _knotdiv;
+    int start_idx;
+    int start_to_end_idx;
+
     double _start, _end;
     double _traj_pub_rate;
     double _knot_span;
 
     MatrixXd _fixed_cp; // Does not change once set  
     MatrixXd _global_cp; // Able to change for replanning
+
     MatrixXd _local_cp;
+    MatrixXd _local_fixed_cp;
 
     VectorXd _fixed_knots;
+    VectorXd _local_knots;
     bs::bspline _bsp;
 
     MatrixXd _pos; MatrixXd _vel; MatrixXd _acc; 
     VectorXd _yaw; VectorXd _time;
 
 public:
+
+    // Control Points Trajectory Mutex
+    std::mutex BsplineTrajMutex;
 
     // trajectory();
     // ~trajectory();
@@ -89,6 +98,8 @@ public:
     * @brief Update Full Path
     */
     bool UpdateFullPath();
+
+    void UploadPartialtoGlobal(MatrixXd opt_cp, int id);
 
     /** 
     * @brief Get Desired State
@@ -122,6 +133,13 @@ public:
 
     MatrixXd GetFixedControlPoints(){return _fixed_cp;};
     MatrixXd GetGlobalControlPoints(){return _global_cp;};
+
+    /** 
+    * @brief Finite time horizon global control points
+    */
+    MatrixXd GetLocalControlPoints(){return _local_cp;};
+    VectorXd GetLocalKnots(){return _local_knots;};
+    MatrixXd GetLocalFixedControlPoints(){return _local_fixed_cp;};
 
     VectorXd GetKnots(){return _fixed_knots;};
 

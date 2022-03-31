@@ -5,7 +5,7 @@ unpack_from_local_file: false
 # Spline Parameters
 spline_order: 5
 control_points_division: 10
-trajectory_pub_rate: 20
+trajectory_pub_rate: 25
 
 # Total number of Agents
 unique_id_range: 20
@@ -16,10 +16,11 @@ common_max_vel: 0.8
 common_min_vel: 0.5
 
 # Optimization Parameters
-optimization_rate: 2
-weight_smooth : 5.0
-weight_feas : 0.2
-weight_term : 0.8
-weight_static : 1.0
-weight_reci : 1.0
-max_acc : 0.5
+optimization_rate: 3
+weight_smooth: 7.5
+weight_feas: 5.0
+weight_term: 0.8
+weight_static: 2.5
+weight_reci: 3.0
+max_acc: 0.10
+finite_time_horizon: 10.0

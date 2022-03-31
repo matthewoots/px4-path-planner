@@ -130,6 +130,7 @@ private:
     double _weight_smooth, _weight_feas, _weight_term; 
     double _weight_static, _weight_reci;
     double _max_acc;
+    double _finite_time_horizon;
 
     bool _initialised;
     bool _setpoint_raw_mode;
@@ -169,7 +170,6 @@ private:
     bool bypass_initialize = false;
     double bypass_init_time = -1.0; // Not initialized condition for time
 
-    int uav_id;
 
     Vector3d rl_pose_offset = Vector3d::Zero();
     double rl_yaw_offset = 0.0;
@@ -207,6 +207,7 @@ private:
 
     sensor_msgs::PointCloud2 pcl_pc2;
     int pcl_count = 0;
+    sensor_msgs::PointCloud2 query_pcl;
 
     vector<int> mission_mode_vector;
     vector<int> mission_mode;  
@@ -216,16 +217,8 @@ private:
     ros::Time bypass_previous_message_time;
     ros::Time mission_previous_message_time;
 
-    struct bspline_assembly 
-    {
-        double msg_time;
-        vector<double> knot_vector;
-        vector<Vector3d> control_points;
-    };
-
     // Trajectory
-    std::mutex uavsTrajMutex;
-    std::map<int, bspline_assembly> uavsTraj;    
+    std::mutex uavsTrajMutex;   
 
     px4_path_planner::multi_agent multi_uav_msg;
     int traj_msg_idx = -1;
@@ -289,7 +282,7 @@ public:
     /** @brief Get all uav agent info such as bspline with this callback */
     void multiAgentInfoBsplineCallBack(const px4_path_planner::multi_agent::ConstPtr &msg)
     {
-        std::lock_guard<std::mutex> _lock(uavsTrajMutex);
+        std::lock_guard<std::mutex> u_lock(uavsTrajMutex);
         vector<int> id_list;
 
         multi_uav_msg = *msg;
@@ -509,6 +502,9 @@ public:
     /** @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint */
     void uavMissionMsgCallBack(const  std_msgs::Float32MultiArray::ConstPtr &msg)
     {
+        // Stop optimization when a new command is received 
+        opt_timer.stop();
+
         mission_previous_message_time = ros::Time::now();
         std_msgs::Float32MultiArray multi_array = *msg;
         
@@ -807,7 +803,9 @@ public:
             if (rrt_node.RRT(pcl_pc2, start_pose, wp.col(0), 
                 no_fly_zone))
             {
-                
+                // Get transformed obs map from RRT
+                query_pcl = rrt_node.get_query_pcl();
+                // Get bspline from RRT
                 rrt_node.rrt_bspline(3);
                 key_wp.resize(3,rrt_node.bspline.size());
 
@@ -849,6 +847,7 @@ public:
     // Used for everything except mission
     void PublishDesiredControl(Vector3d final_pose, int _finished_task)
     {
+        std::lock_guard<std::mutex> t_lock(traj.BsplineTrajMutex);
         double last_timer = taskmaster::last_request_timer;
         double interval = taskmaster::_send_desired_interval;
         if (!taskmaster::task_complete && (ros::Time::now().toSec() - last_timer > interval))
@@ -924,7 +923,7 @@ public:
         bspline.knot.reserve(knots.rows());
         for (int j = 0; j < knots.size(); j++)
         {
-            bspline.knot[j] = (float)knots[j];
+            bspline.knot[j] = knots[j];
         }
 
         bspline_pub.publish(bspline);

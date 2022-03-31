@@ -58,16 +58,22 @@ void trajectory::SetClampedPath(MatrixXd wp,
     _fixed_cp = MatrixXd::Zero(3,_global_cp.cols());
     _fixed_cp = _global_cp;
     _start = ros::Time::now().toSec();
+    ros::Time _start_ros = ros::Time::now();
     std::cout << KYEL << "[trajectory_server.cpp] " << "Start time in sec : " << KNRM << _start << std::endl;
-    _end = _start + ((_fixed_cp.cols() - (_order)) * _knot_span);
-    MatrixXd _fixed_knots_tmp = _bsp.linspace(_start, _end, (double)(_global_cp.cols() - (_order-1)));
-    _fixed_knots = VectorXd::Zero(_fixed_knots_tmp.cols());
-    _fixed_knots = _fixed_knots_tmp.row(0);
+    
+    int knots_size = (_global_cp.cols() - (_order-1));
+    _fixed_knots = VectorXd::Zero(knots_size);
+    for(int i = 0; i < knots_size; i++)
+    {
+        ros::Time time_tmp = _start_ros + ros::Duration(_knot_span * i);
+        _fixed_knots(i) = time_tmp.toSec();
+    }
+
     std::cout << KYEL << "[trajectory_server.cpp] " << "Clamping Complete" << KNRM << std::endl;
 }
 
 /** 
-* @brief Update Path with Local Control Points
+* @brief Update Local Control Points
 * According to Finite Time Horizon
 */
 // A requirement is that now must be an interval of the knots 
@@ -75,51 +81,76 @@ bool trajectory::UpdatePartialPath(
     double now, double _finite_time_horizon)
 {
     // Now to _finite_time_horizon
-    int start_to_end_idx = ceil(_finite_time_horizon / _knot_span);
-    int start_idx;
-    bool early_break = false;
+    start_to_end_idx = ceil(_finite_time_horizon / _knot_span);
+
+    start_idx = -1;
 
     // Check if anything to evaluate in knots
     for (int i = 0; i < _fixed_knots.size(); i++)
     {
-        if (now - _fixed_knots(i) == 0)
+        if (now - _fixed_knots(i) <= 0)
         {
-            int start_idx = i;
+            start_idx = i;
+
+            // We need to move the cp back since order number before the start of the trajectory is needed
+            // We should take the immediate point after since we do not want a jerk at the start
+            if (start_idx - _order < 0)
+                start_idx = _order + 1;
+
             if (start_idx + start_to_end_idx > (_fixed_knots.size()-1))
+            {
                 int end_idx = (_fixed_knots.size()-1);
-            else
-                int end_idx = i + start_to_end_idx;
-            early_break = true;
+                start_to_end_idx = end_idx - start_idx;
+            }
+            // else
+            //     int end_idx = i + start_to_end_idx;
+
             break;
         }    
     }
+    if (start_to_end_idx < _order)
+        return false;
 
     // if no early break, return update path as false
     // This will give the 1st check that the agent is approximately close to agent
-    if (!early_break)
+    if (start_idx < 0)
         return false; 
 
-    // Reset pos, vel, acc and time
-    _pos = MatrixXd::Zero(3,1); _vel = MatrixXd::Zero(3,1); _acc = MatrixXd::Zero(3,1); 
-    _time = VectorXd::Zero(1);
-
     // Truncate control points from global to local
-    _local_cp = MatrixXd::Zero(3,start_to_end_idx + _order);
+    _local_cp = MatrixXd::Zero(3,start_to_end_idx);
+    _local_fixed_cp = MatrixXd::Zero(3,start_to_end_idx);
+    _local_knots = VectorXd::Zero(start_to_end_idx);
+
     for(int i = 0; i < _local_cp.cols(); i++)
     {
         _local_cp.col(i) = _global_cp.col(start_idx + i);
+        _local_knots(i) = _fixed_knots(start_idx + i);
+        _local_fixed_cp.col(i) = _fixed_cp.col(start_idx + i);
     }
 
-    // Truncate 
-    double start_local = _fixed_knots(start_idx);
-    double end_local = start_local + ((double)start_to_end_idx * _knot_span);
-
-    // Bspline Creation using Function
-    _bsp.GetBspline3(_order, _local_cp, start_local, end_local, _knotdiv, 
-        &_pos, &_vel, &_acc, &_time);
-
-    std::cout << KYEL << "[trajectory_server.cpp] " << "Partial Path Update Complete" << KNRM << std::endl;
+    // std::cout << KYEL << "[trajectory_server.cpp] " << "Partial Path Update Complete " 
+    //     << KNRM << _local_cp.cols() << " and " << _local_knots.size() << std::endl;
     return true;
+}
+
+/** 
+* @brief Update Global Path with Local Control Points
+* According to Finite Time Horizon
+*/
+void trajectory::UploadPartialtoGlobal(MatrixXd opt_cp, int id)
+{
+    std::lock_guard<std::mutex> t_lock(BsplineTrajMutex);
+    
+    int end_cols;
+    // Make sure opt cp does not go over global_cp size
+    if (start_idx + _local_cp.cols() > _global_cp.cols())
+        end_cols = _global_cp.cols() - start_idx;
+    else 
+        end_cols = _local_cp.cols();
+
+    for(int i = 0; i < end_cols; i++) 
+        _global_cp.col(start_idx + i) = opt_cp.col(i);
+
 }
 
 /** 
@@ -127,21 +158,15 @@ bool trajectory::UpdatePartialPath(
 */
 bool trajectory::UpdateFullPath()
 {
+    std::lock_guard<std::mutex> t_lock(BsplineTrajMutex);
     // Reset pos, vel, acc and time
     _pos = MatrixXd::Zero(3,1); _vel = MatrixXd::Zero(3,1); _acc = MatrixXd::Zero(3,1); 
     _time = VectorXd::Zero(1);
 
-    // Truncate control points from global to local
-    _local_cp = MatrixXd::Zero(3,_global_cp.cols());
-    for(int i = 0; i < _local_cp.cols(); i++)
-    {
-        _local_cp.col(i) = _global_cp.col(i);
-    }
-
     double start = _fixed_knots(0); double end = _fixed_knots(_fixed_knots.size()-1);
 
     // Bspline Creation using Function
-    _bsp.GetBspline3(_order, _local_cp, start, end, _knotdiv, 
+    _bsp.GetBspline3(_order, _global_cp, start, end, _knotdiv, 
         &_pos, &_vel, &_acc, &_time);
 
     std::cout << KYEL << "[trajectory_server.cpp] " << "Full Path Update Complete" << KNRM << std::endl;

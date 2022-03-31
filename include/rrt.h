@@ -74,8 +74,7 @@ private:
 
     double yaw;
     Vector3d translation;
-    // pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_pc1(new pcl::PointCloud<pcl::PointXYZ>);
-   
+    pcl::PointCloud<pcl::PointXYZ>::Ptr base_pcl;
 
 
 public:
@@ -130,6 +129,18 @@ public:
 
     //     return true;
     // } 
+
+    sensor_msgs::PointCloud2 get_query_pcl()
+    {
+        sensor_msgs::PointCloud2 msg;
+        pcl::toROSMsg(*base_pcl, msg);
+        sensor_msgs::PointCloud2 tmp_pc = transform_sensor_cloud(msg,
+            - Vector3d(0, 0, - yaw), Vector3d(0, 0, 0));
+        msg = transform_sensor_cloud(tmp_pc,
+            - Vector3d(0, 0, 0), translation);
+
+        return msg;
+    }
 
     bool initialize_rrt_params(vector<double> params, int param_size)
     {
@@ -221,8 +232,9 @@ public:
             transformed_pcl_pc, Vector3d(0,0,_origin.z()), _map_size);
 
         // *** For DEBUG ***
-        // transformed_pc1->points.clear();
-        // transformed_pc1 = transformed_cropped_pc1;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr empty(new pcl::PointCloud<pcl::PointXYZ>);
+        base_pcl = empty;
+        base_pcl = transformed_cropped_pc1;
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cropped_pc = 
             pcl_z_scale(transformed_cropped_pc1, _scale_z);

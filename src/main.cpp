@@ -72,6 +72,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     _nh.param<double>("weight_static", _weight_static, 0.5);
     _nh.param<double>("weight_reci", _weight_reci, 0.5);
     _nh.param<double>("max_acc", _max_acc, 0.5);
+    _nh.param<double>("finite_time_horizon", _finite_time_horizon, 1.0);
 
     _nh.param<bool>("unpack_from_local_file", _unpack_from_local_file, true);
 
@@ -110,7 +111,8 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s  _weight_term =%s %lf \n", KBLU, KNRM, _weight_term);
     printf("%s  _weight_static =%s %lf \n", KBLU, KNRM, _weight_static);
     printf("%s  _weight_reci =%s %lf \n", KBLU, KNRM, _weight_reci);
-    
+    printf("%s  _finite_time_horizon =%s %lf \n", KBLU, KNRM, _finite_time_horizon);
+
     printf("%s------------------------------------- \n", KYEL);
 
 
@@ -124,12 +126,12 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Get current agent pose
     */
     uav_pose_sub = _nh.subscribe<geometry_msgs::PoseStamped>(
-        "/" + _id + "/mavros/local_position/pose", 1, &taskmaster::uavPoseCallback, this);
+        "/" + _id + "/mavros/local_position/pose", 20, &taskmaster::uavPoseCallback, this);
     /** 
     * @brief Get current agent velocity
     */
     uav_vel_sub = _nh.subscribe<geometry_msgs::TwistStamped>(
-        "/" + _id + "/mavros/local_position/velocity_local", 1, &taskmaster::uavVelCallback, this);
+        "/" + _id + "/mavros/local_position/velocity_local", 20, &taskmaster::uavVelCallback, this);
     /** 
     * @brief Get all uav agent info such as bspline with this callback
     */
@@ -140,7 +142,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Handles bypass message from mavros_msgs::PositionTarget type
     */
     bypass_msg_sub = _nh.subscribe<mavros_msgs::PositionTarget>(
-        "/" + _id + "/bypass", 1, &taskmaster::bypassCommandCallback, this);
+        "/" + _id + "/bypass", 20, &taskmaster::bypassCommandCallback, this);
 
     
     /* ------------ Subscribe from missionmanager ------------ */
@@ -158,7 +160,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Handles mission from float64 array 1D (1) Mode (2-4) Waypoint
     */
     mission_msg_sub = _nh.subscribe<std_msgs::Float32MultiArray>(
-        "/" + _id + "/mission", 1, &taskmaster::uavMissionMsgCallBack, this);
+        "/" + _id + "/mission", 5, &taskmaster::uavMissionMsgCallBack, this);
     
 
     /* ------------ Subscribe from swarm param ------------ */
@@ -180,7 +182,7 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Get from Relocalization module, the corrected pose
     */
     relocalization_gp_sub = _nh.subscribe<geometry_msgs::PoseStamped>(
-        "/" + _id + "/relocalization/global_pose", 1, &taskmaster::rlGlobalPoseCallback, this);
+        "/" + _id + "/relocalization/global_pose", 5, &taskmaster::rlGlobalPoseCallback, this);
 
 
 
@@ -189,12 +191,12 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Publisher that publishes control position setpoints to Mavros
     */
     local_pos_pub = _nh.advertise<geometry_msgs::PoseStamped>(
-        "/" + _id + "/mavros/setpoint_position/local", 10);
+        "/" + _id + "/mavros/setpoint_position/local", 20);
     /** 
     * @brief Publisher that publishes control raw setpoints to Mavros
     */
     local_pos_raw_pub = _nh.advertise<mavros_msgs::PositionTarget>(
-        "/" + _id + "/mavros/setpoint_raw/local", 10);
+        "/" + _id + "/mavros/setpoint_raw/local", 20);
     /** 
     * @brief Publisher that publishes local pose NWU to Mavros
     */
@@ -204,21 +206,21 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     * @brief Publisher that publishes Bspline
     */
     bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
-        "/" + _id + "/path/bspline", 10);
+        "/" + _id + "/path/bspline", 20);
     /** 
     * @brief Publisher that publishes Global NWU Coordinates
     */
     global_pos_pub = _nh.advertise<geometry_msgs::PoseStamped>(
-        "/" + _id + "/global_pose", 10);
+        "/" + _id + "/global_pose", 20);
     /** 
     * @brief Publisher that publishes Bspline that is optimized
     */
     opt_bspline_pub = _nh.advertise<px4_path_planner::Bspline>(
-        "/" + _id + "/path/opt_bspline", 10);
+        "/" + _id + "/path/opt_bspline", 20);
     
 
     multi_uav_pub = _nh.advertise<px4_path_planner::multi_agent>(
-        "/multi_agent_trajectory", 10);
+        "/multi_agent_trajectory", 20);
 
 
     /* ------------ Service Clients ------------ */
@@ -245,6 +247,10 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     update_drone_traj_timer = _nh.createTimer(ros::Duration(_send_optimization_interval), &taskmaster::trajUpdate, this, false, false);
 
     printf("%s[main.cpp] taskmaster Setup Ready! \n", KGRN);
+
+    printf("%s[main.cpp] =========================================== \n", KRED);
+    printf("%s[main.cpp] Remember to send [param] file before launching \n", KRED);
+    printf("%s[main.cpp] =========================================== \n", KRED);
 }
 
 taskmaster::~taskmaster(){
@@ -331,7 +337,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
         double clean_buffer = ros::Time::now().toSec();
 
-        double buffer = 3.0;
+        double buffer = 1.5;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
         // while loop to clean out buffer for command for 3s
@@ -340,7 +346,7 @@ void taskmaster::uavCommandCallBack(int msg)
             // WARNING : Publishing too fast will result in the mavlink bandwidth to be clogged up hence we need to limit this rate
             if (ros::Time::now().toSec() - last_interval > _send_desired_interval) 
             {
-                Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z};
+                Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z - 0.5};
                 // uavDesiredControlHandler
                 uavDesiredControlHandler(home_pose, 
                     Vector3d (0,0,0),
@@ -627,6 +633,7 @@ bool taskmaster::set_offboard()
 
 void taskmaster::optimization(const ros::TimerEvent &)
 {
+    std::lock_guard<std::mutex> u_lock(uavsTrajMutex);
     // Will optimize and then add the values to the trajectory
     // Find finite horizon
     // Get global cp for [initial guess] = global cp changes in every iteration
@@ -638,13 +645,33 @@ void taskmaster::optimization(const ros::TimerEvent &)
     // MatrixXd opt = bsp_opt.solver(traj.GetGlobalControlPoints(), traj.GetKnotSpan());
 
     ros::Time _start = ros::Time::now();
-    bsp_opt.load(_weight_smooth, _weight_feas, _weight_term, _weight_static, _weight_reci);
+    
+    pcl::PointCloud<pcl::PointXYZ>::Ptr query_pcl_msg = 
+        pcl2_converter(query_pcl);
 
-    MatrixXd opt_cp = bsp_opt.solver(traj.GetGlobalControlPoints(), traj.GetKnotSpan(), traj.GetFixedControlPoints(), _max_acc);
+    if (!traj.UpdatePartialPath(ros::Time::now().toSec(), _finite_time_horizon))
+        return;
+    
+    bsp_opt.load(_weight_smooth, _weight_feas, _weight_term, _weight_static, 
+        _weight_reci, traj.GetLocalKnots());
+
+    printf("%s[main.cpp] GetLocalControlPoints %d GetLocalFixedControlPoints %d!\n", 
+        KGRN, traj.GetLocalControlPoints().cols(),traj.GetLocalFixedControlPoints().cols());
+    printf("%s[main.cpp] GetLocalKnots %d GetKnots %d!\n", 
+        KGRN, traj.GetLocalKnots().size(),traj.GetKnots().size());
+
+    MatrixXd opt_cp = bsp_opt.solver(traj.GetLocalControlPoints(), traj.GetKnotSpan(), 
+        traj.GetLocalFixedControlPoints(), _max_acc, query_pcl_msg, solo_param[1],
+        solo_param[5], solo_param[6]);
+
+    // MatrixXd opt_cp = bsp_opt.solver(traj.GetGlobalControlPoints(), traj.GetKnotSpan(), 
+    //     traj.GetFixedControlPoints(), _max_acc, query_pcl_msg, solo_param[1],
+    //     solo_param[5], solo_param[6]);
 
     ros::Duration diff = ros::Time::now() - _start;
 
-    printf("%s[main.cpp] Optimization Time %lf!\n", KGRN, diff.toSec());
+    printf("%s[main.cpp] Optimization Time %s%lf!\n", KGRN, 
+        KNRM, diff.toSec());
 
     // Publish New Optimized Spline Message
     px4_path_planner::Bspline opt_bspline;
@@ -659,26 +686,37 @@ void taskmaster::optimization(const ros::TimerEvent &)
         pt.x = opt_cp(0,i);
         pt.y = opt_cp(1,i);
         pt.z = opt_cp(2,i);
-        // std::cout << KGRN << "[main.cpp] CP \n" << KNRM << pt << std::endl;
         opt_bspline.global_control_points.push_back(pt);
     }
-    // std::cout << KGRN << "[main.cpp] cp_size \n" << KNRM << bspline.global_control_points.size() << std::endl;
 
-    // printf("%s[main.cpp] Publishing knots \n", KGRN);
     opt_bspline.knot.reserve(knots.rows());
     for (int j = 0; j < knots.size(); j++)
     {
         opt_bspline.knot[j] = (float)knots[j];
     }
 
+    // std::cout << KYEL << "[main.cpp] opt " << uav_id << std::endl << 
+    //     opt_cp << KNRM << std::endl;
+
+    // Let us update the global trajectory
+    traj.UploadPartialtoGlobal(opt_cp, uav_id);
+
+    // Recalculate with updating pos from bspline
+    traj.UpdateFullPath();
+
     opt_bspline_pub.publish(opt_bspline);
+
+    std::cout << KGRN << "[main.cpp] Finished opt " << std::endl << std::endl;
 
 }
 
 void taskmaster::trajUpdate(const ros::TimerEvent &)
 {
-    std::lock_guard<std::mutex> _lock(uavsTrajMutex);
-    
+    // std::lock(traj.BsplineTrajMutex, uavsTrajMutex);
+    // std::lock_guard<std::mutex> t_lock(traj.BsplineTrajMutex, std::adopt_lock);
+    // std::lock_guard<std::mutex> u_lock(uavsTrajMutex, std::adopt_lock);
+    std::lock_guard<std::mutex> t_lock(traj.BsplineTrajMutex);
+
     // Initialization if id is not found
     if (traj_msg_idx < 0)
     {
@@ -701,13 +739,14 @@ void taskmaster::trajUpdate(const ros::TimerEvent &)
 
     px4_path_planner::Bspline bspline;
 
-    // If there is no rows in knots, then there is not trajectory to publish
+    // If there is no rows in knots, then there is no trajectory to publish
     if (traj.GetKnots().rows() <= 1)
         bspline.global_control_points.push_back(uav_global_pose.pose.position);
 
     // Else there may be a trajectory to publish but we have to check whether the data is outdated
     else 
     {
+        // GetLocalControlPoints() is not created yet hence we should send global
         MatrixXd gcp = MatrixXd (traj.GetGlobalControlPoints());
         VectorXd knots = VectorXd (traj.GetKnots());
         if (ros::Time::now().toSec() - knots[0] < 0 || ros::Time::now().toSec() - knots[knots.rows()-1] > 0)
@@ -736,7 +775,7 @@ void taskmaster::trajUpdate(const ros::TimerEvent &)
             bspline.knot.reserve(knots.rows());
             for (int j = 0; j < knots.size(); j++)
             {
-                bspline.knot.push_back((float)knots[j]);
+                bspline.knot.push_back(knots[j]);
             }
         } 
     }
@@ -778,7 +817,8 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
     if (uav_task != uav_prev_task)
     {
         task_complete = false;
-        last_request_timer = traj.GetStartTime();
+        // last_request_timer = traj.GetStartTime();
+        last_request_timer =ros::Time::now().toSec();
         printf("%s[main.cpp] Starting New Task %d @ time(%lf)! \n", KBLU, uav_task, last_request_timer);
         uav_prev_task = uav_task;
     }
@@ -818,6 +858,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                     printf("%s[main.cpp] Check for next mission, %d / %d, %s\n", KGRN, mission_type_count, (int)(mission_wp.size()-1),
                         mission_type_count < (mission_wp.size()-1) ? "true" : "false");
                     
+                    // This only works if the trajectory is completed, we have to exit from here
                     opt_timer.stop();
                     
                     // Check if there are still any more missions
@@ -927,6 +968,7 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
         /** @brief Recalculate trajectory during mission = Handled by optimization timer **/
         if (mission_mode[mission_type_count] != bypass)
         {
+            std::lock_guard<std::mutex> t_lock(traj.BsplineTrajMutex);
             Vector3d pos; Vector3d vel; Vector3d acc; 
             double _calculated_yaw = traj.GetDesiredYaw(last_request_timer, yaw);
 

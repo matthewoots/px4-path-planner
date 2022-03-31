@@ -245,15 +245,15 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr
     pcl2_converter(sensor_msgs::PointCloud2 _pc)
 {
     pcl::PCLPointCloud2 pcl_pc2;
-    printf("%s[rrtstar.h] ros_pcl2 to pcl! \n", KBLU);
+    // printf("%s[rrtstar.h] ros_pcl2 to pcl! \n", KBLU);
     pcl_conversions::toPCL(_pc, pcl_pc2);
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     
-    printf("%s[rrtstar.h] fromPCLPointCloud2! \n", KBLU);
+    // printf("%s[rrtstar.h] fromPCLPointCloud2! \n", KBLU);
     pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
     
-    printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
+    // printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
     return tmp_cloud;
 }
 

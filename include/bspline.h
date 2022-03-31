@@ -162,29 +162,42 @@ namespace bs
         void GetBspline3(int order, MatrixXd cp, double start, double end, int knotdiv, 
             MatrixXd *pos, MatrixXd *vel, MatrixXd *acc, VectorXd *time)
         {
-            if (cp.rows() != 3)
-            {
-                printf("Not a 3xn matrixXd format\n");
-                return;
-            }
+            std::cout << KBLU << "[matrix size]: " << cp.rows() << " " << cp.cols() << " " << cp.size() << std::endl;
 
+            // if (cp.size() == 0)
+            // {
+            //     printf("Invalid 3xn matrixXd format with 0 size\n");
+            //     return;
+            // }
+
+            // if (cp.rows() != 3)
+            // {
+            //     printf("Not a 3xn matrixXd format\n");
+            //     return;
+            // }
+            
             // Time instance of each knot
-            MatrixXd t = linspace(start, end, (double)(cp.cols() - (order-1)));
-            // std::cout << KRED << "[Size of t.cols]: " << KNRM << t.cols() << std::endl;
+            // MatrixXd t = linspace(start, end, (double)(cp.cols() - (order-1)));
+
             // std::cout << KRED << "[Knots]: \n" << KNRM << t << std::endl;
-            int size_span = (t.cols()-1) * knotdiv;
-            // std::cout << KRED << "[Size of size_span]: " << KNRM << size_span << std::endl;
+            int size_span = (cp.cols() - (order-1) - 1) * knotdiv;
 
             // Resize matrix is called inside here
-            *pos = MatrixXd::Zero(3,size_span); 
-            *vel = MatrixXd::Zero(3,size_span); 
-            *acc = MatrixXd::Zero(3,size_span); 
-            *time = VectorXd::Zero(size_span);
+            pos->resize(3, size_span); *pos = MatrixXd::Zero(3,size_span);
+            vel->resize(3, size_span); *vel = MatrixXd::Zero(3,size_span);
+            acc->resize(3, size_span); *acc = MatrixXd::Zero(3,size_span); 
+            time->resize(size_span); *time = VectorXd::Zero(size_span);
+
             for (int i = 0; i < cp.rows(); i++)
             {
-                VectorXd pos_tmp(size_span); VectorXd vel_tmp(size_span); VectorXd acc_tmp(size_span); 
-                VectorXd time_tmp(size_span);
+                
+                RowVectorXd pos_tmp, vel_tmp, acc_tmp, time_tmp;
+                pos_tmp = vel_tmp = acc_tmp = time_tmp = RowVectorXd::Zero(size_span);
+                
+                // std::cout << KRED << "[cp.row " << i << "]: " << KNRM << cp.row(i) << std::endl;
+
                 GetBspline(order, cp.row(i), start, end, knotdiv, &pos_tmp, &vel_tmp, &acc_tmp, &time_tmp);
+
                 pos->row(i) = pos_tmp; 
                 vel->row(i) = vel_tmp; 
                 acc->row(i) = acc_tmp;
@@ -196,71 +209,78 @@ namespace bs
         /*
         * Get Bspline in 1D
         */
-        void GetBspline(int order, MatrixXd cp, double start, double end, int knotdiv, 
-            VectorXd *pos, VectorXd *vel, VectorXd *acc, VectorXd *time)
+        void GetBspline(int order, RowVectorXd cp, double start, double end, int knotdiv, 
+            RowVectorXd *pos, RowVectorXd *vel, RowVectorXd *acc, RowVectorXd *time)
         {
-            if (cp.rows() != 1)
-            {
-                printf("Not a 1xn matrixXd format\n");
-                return;
-            }
+            // if (cp.rows() != 1)
+            // {
+            //     printf("Not a 1xn matrixXd format\n");
+            //     return;
+            // }
                 
+            // std::cout << KRED << "[Size of cp.size]: " << KNRM << cp.size() << std::endl;
             int k = order + 1;
-            int n = cp.cols() - 1;
+            int n = cp.size() - 1;
             MatrixXd M = createM(order);
-            MatrixXd u = MatrixXd::Zero(1,k); // Position Row Vector
-            MatrixXd du = MatrixXd::Zero(1,k); // Velocity Row Vector
-            MatrixXd ddu = MatrixXd::Zero(1,k); // Acceleration Row Vector
-            MatrixXd dddu = MatrixXd::Zero(1,k); // Snap Row Vector
-            MatrixXd p = MatrixXd::Zero(k,1); // Control Points in a Span Column vector
-            // std::cout << "u:\n" << u << std::endl;
-            // std::cout << "p:\n" << p << std::endl;
+            RowVectorXd u, du, ddu, dddu;
+            u = du = ddu = dddu = RowVectorXd::Zero(k); // Position Row Vector, Velocity Row Vector, Acceleration Row Vector, Snap Row Vector
+            VectorXd p = VectorXd::Zero(k); // Control Points in a Span Column vector
 
-            int r = cp.cols() - (order-1);
+            int r = cp.size() - (order-1);
             // Range is the amount of knots since we can expand from [order : end] 
             // since we require order number of cp to calculate the first segment 
-            MatrixXd range = MatrixXd::Zero(1,r);
+            RowVectorXd range = RowVectorXd::Zero(r);
             
             int count = 0;
-            for (int i = order-1; i < cp.cols(); i++)
+            for (int i = order-1; i < cp.size(); i++)
             {
+                if (i - (order-1) > range.size())
+                    continue;
                 range(i - (order-1)) = i;
             }
-            // std::cout << KRED << "[range]: " << KNRM << range << std::endl;
-            
+         
             // dt would be the span of 1 knot which is the same length as range
-            double dt = (end - start) / (double)(range.cols());
+            double dt = (end - start) / (double)(range.size());
             // std::cout << KRED << "[dt]: " << KNRM << dt << std::endl;
-            // std::cout << "dt:\n" << dt << std::endl;
 
             // time instance of each knot
-            MatrixXd t = linspace(start, end, (double)(range.cols()));
-            // std::cout << KRED << "[Size of t.cols]: " << KNRM << t.cols() << std::endl;
-            // std::cout << KRED << "[Knots]: " << KNRM << t << std::endl;
+            // MatrixXd t_s = linspace(start, end, (double)(range.size()));
+            RowVectorXd t = linspace_vector(start, end, range.size());
 
-            VectorXd pos_tmp = VectorXd::Zero((t.cols()-1) * (knotdiv)); 
-            VectorXd vel_tmp = VectorXd::Zero((t.cols()-1) * (knotdiv));  
-            VectorXd acc_tmp = VectorXd::Zero((t.cols()-1) * (knotdiv));  
-            VectorXd time_tmp = VectorXd::Zero((t.cols()-1) * (knotdiv));
-            // std::cout << KRED << "[Size of time_tmp]: " << KNRM << time_tmp.size() << std::endl;
+            // std::cout << KRED << "[Size of t.cols]: " << KNRM << t.cols() << std::endl;
+            // std::cout << KRED << "[Size of t.cols]: " << KNRM << t.size() << std::endl;
+            // std::cout << KRED << "[t]: \n" << KNRM  << fixed << t << std::endl;
+            // std::cout << KRED << "[t_s]: \n" << KNRM  << fixed << t_s << std::endl;
+            // std::cout << KRED << "[t0, t1]: \n" << KNRM  << fixed << t(0) 
+            //     << " " << t(1) << std::endl;
+
+            int knot_vector_size = (t.size()-1) * (knotdiv);
+            // Add a check here to check whether the vector size are the same
+
+            RowVectorXd pos_tmp = RowVectorXd::Zero(knot_vector_size), 
+                vel_tmp = RowVectorXd::Zero(knot_vector_size), 
+                acc_tmp = RowVectorXd::Zero(knot_vector_size), 
+                time_tmp = RowVectorXd::Zero(knot_vector_size);
+
             // MatrixXd jrk; 
 
             int idx_multiplier = 0;
             // total number of span will be t.cols()-1
-            for (int l = 0; l < t.cols()-1; l++)
+            for (int l = 0; l < t.size()-1; l++)
             {
                 int idx = (int)range(l) - order + 1;
-                // std::cout << KRED << "[Index]: " << KNRM << idx << std::endl;
 
                 int nxt_idx = idx + 1; 
-                MatrixXd tmpp = MatrixXd::Zero(1,knotdiv);
-                MatrixXd tmpv = MatrixXd::Zero(1,knotdiv);
-                MatrixXd tmpa = MatrixXd::Zero(1,knotdiv);
+                RowVectorXd tmpp = RowVectorXd::Zero(knotdiv),
+                    tmpv = RowVectorXd::Zero(knotdiv),
+                    tmpa = RowVectorXd::Zero(knotdiv);
                 // MatrixXd tmpj = MatrixXd::Zero(1,knotdiv-1);
 
-                MatrixXd span = linspace(idx, nxt_idx, (double)knotdiv + 1); // relative to the start time as 0 regardless of the time 
-                MatrixXd actualspan = linspace(t(l), t(l+1), (double)knotdiv + 1); // time in abs (simulation time / given time)
-                // std::cout << KRED << "[Actual Span]: " << KNRM << actualspan << std::endl;
+                RowVectorXd span = RowVectorXd::Zero(knotdiv + 1), 
+                    actualspan = RowVectorXd::Zero(knotdiv + 1);
+                span = linspace_vector(idx, nxt_idx, (knotdiv + 1)); // relative to the start time as 0 regardless of the time 
+
+                actualspan = linspace_vector(t(l), t(l+1), (knotdiv + 1)); // time in abs (simulation time / given time)                
 
                 if (idx < 0)
                 {
@@ -268,18 +288,17 @@ namespace bs
                     return;
                 }
 
-                if (idx + 1 >= cp.cols())
+                if (idx + 1 >= cp.size())
                 {
                     printf("idx is out of bounds compared to control points\n");
                     return;
                 }
                 
                 // Span column - 1 is because [0,1)
-                for (int m = 0; m < span.cols()-1; m++)
+                for (int m = 0; m < span.size()-1; m++)
                 {
                     double time = span(m); // current time in index form, of course we dont like to play with conversion
                     double u_t = (time - (double)idx) / (double)((idx + 1) - idx); // using index is the same as using time since u_t is a factor
-                    // std::cout << KRED << "[Actual Time]: " << KNRM << actualspan(m) << std::endl;
 
                     // p have several conventions according to SO many papers but i
                     // would use the convention under (1) and it is the correct one
@@ -291,7 +310,7 @@ namespace bs
                     {
                         u(j) = pow(u_t, j);
                         p(j) = cp(idx + j);
-                        // std::cout << KRED << "[cp]: " << KNRM << cp(idx + j) << std::endl;
+
                         if (j >= 1)
                             du(j) = (j) * pow(u_t, j-1);
                         if (j >= 2)
@@ -308,11 +327,9 @@ namespace bs
                     tmpv(m) = (inv_dt * du * M * p)(0,0);
                     tmpa(m) = (pow(inv_dt,2) * ddu * M * p)(0,0);
                     // tmpj(m) = inv_dt^3 * dddu * M * p;
-                    // std::cout << KRED << "[tmpp_matrix0]: \n" << KNRM << (u * M * p)(0,0) << std::endl;
                 }
-                // std::cout << KRED << "[tmpp_matrix]: \n" << KNRM << tmpp << std::endl;
                 
-                for (int m = 0; m < span.cols()-1; m++)
+                for (int m = 0; m < span.size()-1; m++)
                 {
                     pos_tmp(m+idx_multiplier*(knotdiv)) = tmpp(m);
                     vel_tmp(m+idx_multiplier*(knotdiv)) = tmpv(m);
@@ -323,11 +340,11 @@ namespace bs
                 idx_multiplier++;
                 // std::cout << KRED << "[Value Range]: " << KNRM << idx_multiplier*(knotdiv) << std::endl;
             }
-            // std::cout << KRED << "[Time]: \n" << KNRM << time_tmp << std::endl;
             *pos = pos_tmp;
             *vel = vel_tmp;
             *acc = acc_tmp;
             *time = time_tmp;
+
             return;
         }
 
@@ -372,6 +389,19 @@ namespace bs
             for (int i = 1; i < (int)n; i++)
             {
                 linspaced(0,i) = linspaced(0,i-1) + delta;
+            }
+            return linspaced;
+        }
+
+        RowVectorXd linspace_vector(double min, double max, int n)
+        {
+            RowVectorXd linspaced = RowVectorXd::Zero(n);
+            double delta = (max - min) / (double)(n - 1);
+            linspaced(0) = min;
+            
+            for (int i = 1; i < n; i++)
+            {
+                linspaced(i) = (linspaced(i-1) + delta);
             }
             return linspaced;
         }
