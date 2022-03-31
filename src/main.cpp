@@ -547,7 +547,7 @@ bool taskmaster::set_offboard()
 
     geometry_msgs::PoseStamped home_enu;
     //send a few setpoints before starting
-    for (int i = 20; ros::ok() && i > 0; --i)
+    for (int i = 10; ros::ok() && i > 0; --i)
     {
         // *** This uses ENU, obsolete since we use NWU ***
         // local_pos_pub.publish(home);
@@ -556,7 +556,7 @@ bool taskmaster::set_offboard()
         // home_enu = convert_global_nwu_to_enu(home);
         // local_pos_pub.publish(home_enu);
 
-        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z), 
+        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z-0.05), 
         Vector3d(0,0,0), Vector3d(0,0,0), yaw_nwu);
 
         ros::spinOnce();
@@ -602,7 +602,7 @@ bool taskmaster::set_offboard()
         // We must convert home from NWU to ENU
         // local_pos_pub.publish(home_enu);
 
-        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z), 
+        uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z-0.05), 
         Vector3d(0,0,0), Vector3d(0,0,0), yaw_nwu);
 
         is_mode_ready = (uav_current_state.mode == "OFFBOARD") && uav_current_state.armed;

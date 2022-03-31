@@ -71,6 +71,7 @@
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 using namespace Eigen;
 using namespace std;
@@ -118,6 +119,8 @@ private:
     ros::Publisher local_pos_nwu_pub;
 
     ros::Publisher bspline_pub, global_pos_pub, opt_bspline_pub;
+
+    tf2_ros::TransformBroadcaster m_broadcaster;
 
     ros::ServiceClient arming_client; 
     ros::ServiceClient set_mode_client; 
@@ -372,11 +375,23 @@ public:
 
         nav_msgs::Odometry uav_nwu_local_odom;
 
-        uav_nwu_local_odom.header.stamp = local_nwu_pose.header.stamp;
+	uav_nwu_local_odom.header.stamp = local_nwu_pose.header.stamp;
+        uav_nwu_local_odom.header.frame_id = _id + "/odom_nwu";
+	uav_nwu_local_odom.child_frame_id = _id + "/base_link_nwu";
         uav_nwu_local_odom.pose.pose.position = local_nwu_pose.pose.position;
         uav_nwu_local_odom.pose.pose.orientation = local_nwu_pose.pose.orientation;
 
         local_pos_nwu_pub.publish(uav_nwu_local_odom);
+
+	geometry_msgs::TransformStamped tf;
+	tf.header = uav_nwu_local_odom.header;
+	tf.child_frame_id = _id + "/base_link_nwu";
+        tf.transform.translation.x = uav_nwu_local_odom.pose.pose.position.x;
+        tf.transform.translation.y = uav_nwu_local_odom.pose.pose.position.y;
+        tf.transform.translation.z = uav_nwu_local_odom.pose.pose.position.z;
+        tf.transform.rotation = uav_nwu_local_odom.pose.pose.orientation;
+
+	m_broadcaster.sendTransform(tf);
 
         // Factor in changes from relocalization
         uav_global_pose.pose.position.x += rl_pose_offset.x();
@@ -403,19 +418,20 @@ public:
         Vector3d rl_q_nwu;
 
         // Writes directly to the rl_pose_offset, may have jerk
-        rl_pose_offset.x() = (double)rl_global_pose.pose.position.x - global_pos.x();
-        rl_pose_offset.y() = (double)rl_global_pose.pose.position.y - global_pos.y();
-        rl_pose_offset.z() = (double)rl_global_pose.pose.position.z - global_pos.z();
-
+        rl_pose_offset.x() += (double)rl_global_pose.pose.position.x - global_pos.x();
+        rl_pose_offset.y() += (double)rl_global_pose.pose.position.y - global_pos.y();
+        //rl_pose_offset.z() += (double)rl_global_pose.pose.position.z - global_pos.z();
+	rl_pose_offset.z() = 0;
         // @Todo Match to timestamped
 
-        tf::Quaternion q_nwu(
-            rl_global_pose.pose.orientation.x, rl_global_pose.pose.orientation.y,
-            rl_global_pose.pose.orientation.z, rl_global_pose.pose.orientation.w);
-        tf::Matrix3x3 m_nwu(q_nwu);
-        m_nwu.getRPY(rl_q_nwu.x(), rl_q_nwu.y(), rl_q_nwu.z());
+        //tf::Quaternion q_nwu(
+        //    rl_global_pose.pose.orientation.x, rl_global_pose.pose.orientation.y,
+        //    rl_global_pose.pose.orientation.z, rl_global_pose.pose.orientation.w);
+        //tf::Matrix3x3 m_nwu(q_nwu);
+        //m_nwu.getRPY(rl_q_nwu.x(), rl_q_nwu.y(), rl_q_nwu.z());
 
-        rl_yaw_offset = yaw_nwu - rl_q_nwu.z();
+        //rl_yaw_offset = yaw_nwu - rl_q_nwu.z();
+    	rl_yaw_offset = 0;
     }
 
     /** @brief Get bypass command message */
@@ -719,7 +735,13 @@ public:
         else
             selected_speed = taskmaster::_common_max_vel;
 
-        traj.Initialise(taskmaster::_order, 
+	int traj_order;
+	if (uav_task == kTakeOff || uav_task == kLand)
+	    traj_order = 3;
+	else
+	    traj_order = taskmaster::_order;
+
+        traj.Initialise(traj_order, 
             taskmaster::_control_points_division, 
             taskmaster::_trajectory_pub_rate);
 
