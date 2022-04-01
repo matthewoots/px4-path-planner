@@ -390,9 +390,9 @@ public:
 	    m_broadcaster.sendTransform(tf);
 
         // Factor in changes from relocalization
-        uav_global_pose.pose.position.x += rl_pose_offset.x();
-        uav_global_pose.pose.position.y += rl_pose_offset.y();
-        uav_global_pose.pose.position.z += rl_pose_offset.z();
+        // uav_global_pose.pose.position.x += rl_pose_offset.x();
+        // uav_global_pose.pose.position.y += rl_pose_offset.y();
+        // uav_global_pose.pose.position.z += rl_pose_offset.z();
         yaw_nwu +=  rl_yaw_offset;
 
         //     std::cout << KGRN << "[task.h] nwu_yaw=" << KNRM <<
@@ -402,6 +402,16 @@ public:
         global_pos.x() = (double)uav_global_pose.pose.position.x;
         global_pos.y() = (double)uav_global_pose.pose.position.y;
         global_pos.z() = (double)uav_global_pose.pose.position.z;
+
+	geometry_msgs::PoseStamped pos_nwu_sp_tmp;
+        pos_nwu_sp_tmp.pose.position.x = global_pos.x();
+        pos_nwu_sp_tmp.pose.position.y = global_pos.y();
+        pos_nwu_sp_tmp.pose.position.z = global_pos.z()+1.6;
+
+	//std::cout << KGRN << "NWU GLOBAL SP " << pos_nwu_sp_tmp.pose.position.x << " " << pos_nwu_sp_tmp.pose.position.y << " " << pos_nwu_sp_tmp.pose.position.z << std::endl;
+	//geometry_msgs::PoseStamped pos_enu_sp_tmp = convert_global_nwu_to_enu(pos_nwu_sp_tmp);
+
+	//std::cout << KBLU << "ENU LOCAL SP " << pos_enu_sp_tmp.pose.position.x << " " << pos_enu_sp_tmp.pose.position.y << " " << pos_enu_sp_tmp.pose.position.z << std::endl;
 
         global_pos_pub.publish(uav_global_pose);
     }
@@ -422,7 +432,7 @@ public:
             (double)rl_global_pose.pose.position.y - global_pos.y());
 
         // Correction velocity
-        double correction_error = 0.015;
+        double correction_error = 0.05;
         double distance_error = sqrt(pow(current_correction.x(),2) + pow(current_correction.y(),2));
         
         Vector2d correction_vector;
@@ -994,8 +1004,13 @@ public:
     */
     geometry_msgs::PoseStamped convert_global_nwu_to_enu(geometry_msgs::PoseStamped global_nwu_pose)
     {
-        global_nwu_pose.pose.position.x -= global_offset.x() - rl_pose_offset.x();
-        global_nwu_pose.pose.position.y -= global_offset.y() - rl_pose_offset.x();
+	geometry_msgs::PoseStamped local_nwu_pose;
+        local_nwu_pose = convert_enu_to_nwu(uav_pose);
+        double GP_LP_x = global_pos.x() - local_nwu_pose.pose.position.x;
+        double GP_LP_y = global_pos.y() - local_nwu_pose.pose.position.y;
+
+        global_nwu_pose.pose.position.x -= global_offset.x() + GP_LP_x;
+        global_nwu_pose.pose.position.y -= global_offset.y() + GP_LP_y;
         global_nwu_pose.pose.position.z -= global_offset.z();
         // Convert from ENU to Global NWU
         geometry_msgs::PoseStamped enu_tmp = transform_pose_stamped(global_nwu_pose, Vector3d(0,0,90.0));

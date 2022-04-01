@@ -337,7 +337,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
         double clean_buffer = ros::Time::now().toSec();
 
-        double buffer = 1.5;
+        double buffer = 0.5;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
         // while loop to clean out buffer for command for 3s
@@ -346,7 +346,7 @@ void taskmaster::uavCommandCallBack(int msg)
             // WARNING : Publishing too fast will result in the mavlink bandwidth to be clogged up hence we need to limit this rate
             if (ros::Time::now().toSec() - last_interval > _send_desired_interval) 
             {
-                Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z - 0.5};
+                Vector3d home_pose = {home.pose.position.x, home.pose.position.y, home.pose.position.z - 0.05};
                 // uavDesiredControlHandler
                 uavDesiredControlHandler(home_pose, 
                     Vector3d (0,0,0),
