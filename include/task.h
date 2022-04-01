@@ -397,9 +397,9 @@ public:
 	    m_broadcaster.sendTransform(tf);
 
         // Factor in changes from relocalization
-        uav_global_pose.pose.position.x += rl_pose_offset.x();
-        uav_global_pose.pose.position.y += rl_pose_offset.y();
-        uav_global_pose.pose.position.z += rl_pose_offset.z();
+        // uav_global_pose.pose.position.x += rl_pose_offset.x();
+        // uav_global_pose.pose.position.y += rl_pose_offset.y();
+        // uav_global_pose.pose.position.z += rl_pose_offset.z();
         yaw_nwu +=  rl_yaw_offset;
 
         //     std::cout << KGRN << "[task.h] nwu_yaw=" << KNRM <<
@@ -996,7 +996,7 @@ public:
     geometry_msgs::PoseStamped convert_global_nwu_to_enu(geometry_msgs::PoseStamped global_nwu_pose)
     {
         global_nwu_pose.pose.position.x -= global_offset.x() - rl_pose_offset.x();
-        global_nwu_pose.pose.position.y -= global_offset.y() - rl_pose_offset.x();
+        global_nwu_pose.pose.position.y -= global_offset.y() - rl_pose_offset.y();
         global_nwu_pose.pose.position.z -= global_offset.z();
         // Convert from ENU to Global NWU
         geometry_msgs::PoseStamped enu_tmp = transform_pose_stamped(global_nwu_pose, Vector3d(0,0,90.0));
