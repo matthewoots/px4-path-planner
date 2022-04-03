@@ -82,55 +82,6 @@ public:
 
     std::vector<Vector3d> bspline;
 
-    // bool unpack_rrt_params(std::string _file_location)
-    // {
-    //     printf("%s[rrt.h] Trying to open %s \n", KYEL, _file_location.c_str());
-    //     ifstream file(_file_location);
-        
-    //     if (!file)
-    //     {
-    //         printf("%s[rrt.h] File not present! \n", KRED);
-    //         return false;
-    //     }
-    //     printf("%s[rrt.h] Success, found %s \n", KGRN, _file_location.c_str());
-
-    //     io::CSVReader<10> in(_file_location);
-    //     in.read_header(io::ignore_extra_column, "step_size", 
-    //         "obs_threshold", "xybuffer", "zbuffer", "passage_size",
-    //         "min_height", "max_height", "max_tries", "timeout", "z_scale");
-        
-    //     double step_size;
-    //     double obs_threshold;
-    //     double xybuffer;
-    //     double zbuffer;
-    //     double passage_size;
-
-    //     double min_height;
-    //     double max_height;
-    //     int max_tries;
-    //     double timeout;
-    //     double z_scale;
-
-    //     // First pass is to get number of rows
-    //     while (in.read_row(step_size, obs_threshold, xybuffer, zbuffer,
-    //         passage_size, min_height, max_height, max_tries, timeout, z_scale))
-    //     {
-    //         _step_size = step_size;
-    //         _obs_threshold = obs_threshold;
-    //         _xybuffer = xybuffer;
-    //         _zbuffer = zbuffer;
-    //         _passage_size = passage_size;
-
-    //         _min_height = min_height;
-    //         _max_height = max_height;
-    //         _max_tries = max_tries;
-    //         _timeout = timeout;
-    //         _scale_z = z_scale;
-    //     }
-
-    //     return true;
-    // } 
-
     bool initialize_rrt_params(vector<double> params, int param_size)
     {
         if (params.size() != param_size)
@@ -170,7 +121,7 @@ public:
         // Do the preparation for transformation
         // Find the translation vector and the yaw angle
         Vector3d tmp_vect = end - start;
-        yaw = atan2(tmp_vect.y(), tmp_vect.x()) / 3.1415926535 * 180;
+        yaw = atan2(tmp_vect.y(), tmp_vect.x()) / M_PI * 180;
         Vector3d rotation = Vector3d(0,0,yaw);
 
         translation = Vector3d(_origin.x(), _origin.y(), 0);       
@@ -217,7 +168,7 @@ public:
 
         // We can crop the pointcloud to the dimensions that we are using
         // Origin will already to (0,0,0)
-        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cropped_pc1 = pcl2_filter(
+        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cropped_pc1 = pcl_ptr_filter(
             transformed_pcl_pc, Vector3d(0,0,_origin.z()), _map_size);
 
         // *** For DEBUG ***
@@ -401,10 +352,10 @@ public:
         // Vector3d end_pose = e;
 
         // Start position will be at rrt_path.size()-1
-        MatrixXd global_cp = setClampedPath(wp, 
+        MatrixXd global_cp = set_clamped_path(wp, 
         2, 4, _order, rrt_path[rrt_path.size()-1]);
-        VectorXd knots = setKnotsPath(global_cp, 1, _order);
-        std::vector<Vector3d> bs_tmp = updateFullPath(global_cp, 
+        VectorXd knots = set_knots_path(global_cp, 1, _order);
+        std::vector<Vector3d> bs_tmp = update_full_path(global_cp, 
             1, _order, knots);
 
         // Since the nodes are flipped we have to flip them back first

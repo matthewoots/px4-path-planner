@@ -59,11 +59,6 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 
     _params_directory = _package_directory + "/params";
 
-    // Global offset from the origin in NWU frame
-    _nh.param<double>("nwu_offset_x", global_offset.x(), 0.0);
-    _nh.param<double>("nwu_offset_y", global_offset.y(), 0.0);
-    _nh.param<double>("nwu_offset_z", global_offset.z(), 0.0);
-
     // Optimization parameters
     _nh.param<double>("optimization_rate", _optimization_rate, 2.0);
     _nh.param<double>("weight_smooth", _weight_smooth, 0.5);
@@ -96,8 +91,6 @@ taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
     printf("%s  _package_directory =%s %s \n", KBLU, KNRM, _package_directory.c_str());
     printf("%s  _id =%s %s \n", KBLU, KNRM, _id.c_str());
     printf("%s  uav_id =%s %d \n", KBLU, KNRM, uav_id);
-    printf("%s  global_offset =%s [%lf %lf %lf] \n\n", KBLU, KNRM, 
-        global_offset.x(), global_offset.y(), global_offset.z());
 
     printf("\n%s  Using System Time =%s %s\n", KBLU, KNRM, 
        ros::Time::useSystemTime() ? "true" : "false");
@@ -331,7 +324,7 @@ void taskmaster::uavCommandCallBack(int msg)
 
         double clean_buffer = ros::Time::now().toSec();
 
-        double buffer = 0.5;
+        double buffer = 0.8;
         std::cout << KBLU << "[main.cpp] " << "Takeoff buffer of " << KNRM << buffer << KBLU << "s" << std::endl;
         double last_interval = ros::Time::now().toSec();
         // while loop to clean out buffer for command for 3s
@@ -553,7 +546,6 @@ bool taskmaster::set_offboard()
         // local_pos_pub.publish(home);
 
         // We must convert home from NWU to ENU
-        // home_enu = convert_global_nwu_to_enu(home);
         // local_pos_pub.publish(home_enu);
 
         uavDesiredControlHandler(Vector3d(home.pose.position.x,home.pose.position.y,home.pose.position.z-0.05), 
@@ -677,7 +669,7 @@ void taskmaster::optimization(const ros::TimerEvent &)
 
 void taskmaster::trajUpdate(const ros::TimerEvent &)
 {
-    std::lock_guard<std::mutex> _lock(uavsTrajMutex);
+    std::lock_guard<std::mutex> _lock(uavs_traj_mutex);
     
     // Initialization if id is not found
     if (traj_msg_idx < 0)

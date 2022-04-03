@@ -61,10 +61,7 @@
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
-<param name="package_directory" value="$(find px4_path_planner)"/>
-            <param name="nwu_offset_x" value="0"/>
-            <param name="nwu_offset_y" value="0"/>
-            <param name="nwu_offset_z" value="0"/>
+            <param name="package_directory" value="$(find px4_path_planner)"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization0" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
@@ -112,10 +109,7 @@
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
-<param name="package_directory" value="$(find px4_path_planner)"/>
-            <param name="nwu_offset_x" value="0"/>
-            <param name="nwu_offset_y" value="-2.5"/>
-            <param name="nwu_offset_z" value="0"/>
+            <param name="package_directory" value="$(find px4_path_planner)"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization1" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
@@ -165,10 +159,7 @@
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
-<param name="package_directory" value="$(find px4_path_planner)"/>
-            <param name="nwu_offset_x" value="2.165"/>
-            <param name="nwu_offset_y" value="1"/>
-            <param name="nwu_offset_z" value="0"/>
+            <param name="package_directory" value="$(find px4_path_planner)"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization2" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
@@ -217,10 +208,7 @@
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
-<param name="package_directory" value="$(find px4_path_planner)"/>
-            <param name="nwu_offset_x" value="-2.165"/>
-            <param name="nwu_offset_y" value="1"/>
-            <param name="nwu_offset_z" value="0"/>
+            <param name="package_directory" value="$(find px4_path_planner)"/>
     	</node>
         <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization3" output="screen">
             <param name="agent_id" value="$(arg xid)"/>

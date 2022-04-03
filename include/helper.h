@@ -1,5 +1,5 @@
 /*
- * rrtstar_helper.h
+ * helper.h
  *
  * ---------------------------------------------------------------------
  * Copyright (C) 2022 Matthew (matthewoots at gmail.com)
@@ -27,8 +27,8 @@
 * https://github.com/swadhagupta/RRT/blob/master/rrt.cpp
 * https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
 */
-#ifndef RRT_HELPER_H
-#define RRT_HELPER_H
+#ifndef HELPER_H
+#define HELPER_H
 
 #include <bspline.h>
 
@@ -72,10 +72,10 @@ using namespace std;
 #define KCYN  "\033[36m"
 #define KWHT  "\033[37m"
 
-namespace rrt_helper
+namespace helper
 {
 
-bs::bspline _bsp;
+
 // *** Helper functions ***
 
 Vector3d rotate_vector(Vector3d rotation, Vector3d translation)
@@ -84,7 +84,7 @@ Vector3d rotate_vector(Vector3d rotation, Vector3d translation)
     // for affine3d examples
     geometry_msgs::Quaternion q;
     tf2::Quaternion quat_tf;
-    double deg2rad = - 1.0 / 180.0 * 3.1415926535;
+    double deg2rad = - 1.0 / 180.0 * M_PI;
 
     quat_tf.setRPY(rotation.x() * deg2rad, 
         rotation.y() * deg2rad, 
@@ -117,7 +117,7 @@ geometry_msgs::Point transform_point(geometry_msgs::Point _p,
 
     t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
 
-    double deg2rad = 1.0 / 180.0 * 3.1415926535;
+    double deg2rad = 1.0 / 180.0 * M_PI;
 
     quat_tf.setRPY(_rpy.x() * deg2rad, 
         _rpy.y() * deg2rad, 
@@ -154,6 +154,78 @@ Vector3d point_to_vector(geometry_msgs::Point p)
     return tmp;
 }
 
+geometry_msgs::Quaternion quaternion_to_orientation(Quaterniond q)
+{
+    geometry_msgs::Quaternion tmp;
+    tmp.x = q.x(); 
+    tmp.y = q.y(); 
+    tmp.z = q.z();
+    tmp.w = q.w();
+
+    return tmp;
+}
+
+Quaterniond orientation_to_quaternion(geometry_msgs::Quaternion q)
+{
+    Quaterniond tmp;
+    tmp.x() = q.x; 
+    tmp.y() = q.y; 
+    tmp.z() = q.z;
+    tmp.w() = q.w;
+
+    return tmp;
+}
+
+double constrain_between_180(double x)
+{
+    x = fmod(x + M_PI,2*M_PI);
+    if (x < 0)
+        x += 2*M_PI;
+    return x - M_PI;
+}
+
+double constrain_between_90(double x)
+{
+    x = fmod(x + M_PI_2,M_PI);
+    if (x < 0)
+        x += M_PI;
+    return x - M_PI_2;
+}
+
+Affine3d posestamped_to_affine(geometry_msgs::PoseStamped ps)
+{
+    Affine3d output = Affine3d::Identity();
+    Quaterniond orientation = Quaterniond(ps.pose.orientation.w,
+        ps.pose.orientation.x,
+        ps.pose.orientation.y,
+        ps.pose.orientation.z
+    );
+    Vector3d position = Vector3d(ps.pose.position.x,
+        ps.pose.position.y,
+        ps.pose.position.z
+    );
+    output.translation() = position;
+    output.linear() = orientation.toRotationMatrix();
+
+    return output;
+}
+
+Quaterniond enu_to_nwu() {return Quaterniond(0.7073883, 0, 0, 0.7068252);}
+
+
+VectorXd linspace(double min, double max, double n)
+{
+    VectorXd linspaced((int)n);
+    double delta = (max - min) / (n - 1.0);
+    linspaced(0) = min;
+    
+    for (int i = 1; i < (int)n; i++)
+    {
+        linspaced(i) = (linspaced(i-1) + delta);
+    }
+    return linspaced;
+}
+
 /* 
 * @brief Stretch/Scale operation on point cloud
 */
@@ -176,23 +248,17 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr
 * @brief Filter point cloud with the dimensions given
 */
 pcl::PointCloud<pcl::PointXYZ>::Ptr 
-    pcl2_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr input, 
+    pcl_ptr_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr input, 
     Vector3d centroid, Vector3d dimension)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
     
-    float minX = centroid.x() - dimension.x()/2;
-    float maxX = centroid.x() + dimension.x()/2;
-
-    float minY = centroid.y() - dimension.y()/2;
-    float maxY = centroid.y() + dimension.y()/2;
-
-    float minZ = centroid.z() - dimension.z()/2;
-    float maxZ = centroid.z() + dimension.z()/2;
+    Vector3d min = centroid - dimension/2;
+    Vector3d max = centroid + dimension/2;
 
     pcl::CropBox<pcl::PointXYZ> box_filter;
-    box_filter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-    box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+    box_filter.setMin(Eigen::Vector4f(min.x(), min.y(), min.z(), 1.0));
+    box_filter.setMax(Eigen::Vector4f(max.x(), max.y(), max.z(), 1.0));
 
     box_filter.setInputCloud(input);
     box_filter.filter(*output);
@@ -207,7 +273,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr base_to_transform_pcl(pcl::PointCloud<pcl::P
     // for affine3d examples
     geometry_msgs::Quaternion q;
     tf2::Quaternion quat_tf;
-    double deg2rad = - 1.0 / 180.0 * 3.1415926535;
+    double deg2rad = - 1.0 / 180.0 * M_PI;
 
     quat_tf.setRPY(rotation.x() * deg2rad, 
         rotation.y() * deg2rad, 
@@ -237,29 +303,26 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr base_to_transform_pcl(pcl::PointCloud<pcl::P
     return tmp_pcl_rot;
 }
 
-/* 
+/** 
 * @brief Convert point cloud from ROS sensor message to 
 * pcl point ptr
-*/
+**/
 pcl::PointCloud<pcl::PointXYZ>::Ptr 
     pcl2_converter(sensor_msgs::PointCloud2 _pc)
 {
     pcl::PCLPointCloud2 pcl_pc2;
-    printf("%s[rrtstar.h] ros_pcl2 to pcl! \n", KBLU);
     pcl_conversions::toPCL(_pc, pcl_pc2);
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     
-    printf("%s[rrtstar.h] fromPCLPointCloud2! \n", KBLU);
     pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
     
-    printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
     return tmp_cloud;
 }
 
-/* 
+/** 
 * @brief Transform sensor cloud according to the translation and rpy given
-*/
+**/
 sensor_msgs::PointCloud2 transform_sensor_cloud(sensor_msgs::PointCloud2 _pc,
     Vector3d _rpy, Vector3d _translation)
 {
@@ -271,7 +334,7 @@ sensor_msgs::PointCloud2 transform_sensor_cloud(sensor_msgs::PointCloud2 _pc,
 
     t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
 
-    double deg2rad = 1.0 / 180.0 * 3.1415926535;
+    double deg2rad = 1.0 / 180.0 * M_PI;
 
     quat_tf.setRPY(_rpy.x() * deg2rad, 
         _rpy.y() * deg2rad, 
@@ -314,44 +377,26 @@ geometry_msgs::Point backward_transform_point(geometry_msgs::Point _p,
     return tmp;
 }
 
-MatrixXd setClampedPath(MatrixXd wp, 
+MatrixXd set_clamped_path(MatrixXd wp, 
         double max_vel, double _knot_span, int _order, 
         Vector3d start_pose) 
 {
-    /* 
-    * Uniform Distribution
-    */
+    bs::bspline _bsp;
+    /* Uniform Distribution */
     MatrixXd cp_raw = MatrixXd::Zero(3,1); VectorXd time_waypoint = VectorXd::Zero(1);
 
     _bsp.UniformDistribution(start_pose, wp, max_vel, _knot_span, 
         &time_waypoint, &cp_raw);
-    std::cout << KYEL << "[common_utils.h] " << "Uniform Distribution Complete" << KNRM << std::endl;
 
-    /* 
-    * Clamp the Bspline
-    */
+    /* Clamp the Bspline */
     // Update global control points and start and end time 
     MatrixXd _global_cp = _bsp.ClampBspline(_order, cp_raw);
-    std::cout << KYEL << "[common_utils.h] " << "Clamping Bspline" << KNRM << std::endl;
 
     return _global_cp;
 }
 
-VectorXd linspace(double min, double max, double n)
-{
-    VectorXd linspaced((int)n);
-    double delta = (max - min) / (n - 1.0);
-    linspaced(0) = min;
-    
-    for (int i = 1; i < (int)n; i++)
-    {
-        linspaced(i) = (linspaced(i-1) + delta);
-    }
-    return linspaced;
-}
 
-
-VectorXd setKnotsPath(MatrixXd _global_cp, double   _knot_span, int _order)
+VectorXd set_knots_path(MatrixXd _global_cp, double   _knot_span, int _order)
 {
     double _start = ros::Time::now().toSec();
     double _end = _start + ((_global_cp.cols() - (_order)) * _knot_span);
@@ -364,8 +409,9 @@ VectorXd setKnotsPath(MatrixXd _global_cp, double   _knot_span, int _order)
 /** 
 * @brief Update Full Path
 */
-std::vector<Vector3d> updateFullPath(MatrixXd _global_cp, int _knotdiv, int _order, VectorXd _fixed_knots)
+std::vector<Vector3d> update_full_path(MatrixXd _global_cp, int _knotdiv, int _order, VectorXd _fixed_knots)
 {
+    bs::bspline _bsp;
     // Reset pos, vel, acc and time
     MatrixXd _pos = MatrixXd::Zero(3,1); 
     MatrixXd _vel = MatrixXd::Zero(3,1); 
