@@ -374,28 +374,15 @@ public:
             uav_pose.pose.orientation.x,
             uav_pose.pose.orientation.y,
             uav_pose.pose.orientation.z).toRotationMatrix();
-        Vector3d local_enu_euler = current_transform.linear().eulerAngles(2,1,0);
+        // Vector3d local_eigen_enu_euler = current_transform.linear().eulerAngles(2,1,0);
+
+        Vector3d local_enu_euler = euler_rpy(current_transform.linear());
 
         // Update current pos and rpy
         current_pos = current_transform.translation();
-        // roll = local_enu_euler[2];
-        // pitch = local_enu_euler[1];
-        // yaw = local_enu_euler[0];
-
-        tf2::Quaternion q_enu(
-            uav_pose.pose.orientation.x,
-            uav_pose.pose.orientation.y,
-            uav_pose.pose.orientation.z,
-            uav_pose.pose.orientation.w);
-        tf2::Matrix3x3 m_enu(q_enu);
-        double r_enu, p_enu, y_enu;
-        m_enu.getRPY(r_enu, p_enu, y_enu);
-        roll = r_enu;
-        pitch = p_enu;
-        yaw = y_enu;
-
-        std::cout << KBLU << "yaw_eigen "  << 
-            local_enu_euler[0] << " yaw_tf2 " << y_enu << std::endl;
+        roll = local_enu_euler[0];
+        pitch = local_enu_euler[1];
+        yaw = local_enu_euler[2];
         
         // Local NWU affine matrix
         Affine3d local_nwu = enu_to_nwu().inverse() * current_transform;
@@ -433,24 +420,11 @@ public:
 
         global_nwu_pose = local_to_nwu_global_t * current_transform;
         Quaterniond nwu_global_q = Quaterniond(global_nwu_pose.linear());
-        Vector3d global_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
-        // roll_nwu = global_nwu_euler[2];
-        // pitch_nwu = global_nwu_euler[1];
-        // yaw_nwu = global_nwu_euler[0];
-
-        tf2::Quaternion q_nwu(
-            nwu_global_q.x(),
-            nwu_global_q.y(),
-            nwu_global_q.z(),
-            nwu_global_q.w());
-        tf2::Matrix3x3 m_nwu(q_nwu);
-        double r_nwu, p_nwu, y_nwu;
-        m_nwu.getRPY(r_nwu, p_nwu, y_nwu);
-
-        roll_nwu = r_nwu;
-        pitch_nwu = p_nwu;
-        yaw_nwu = y_nwu;
-        
+        // Vector3d global_eigen_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
+        Vector3d global_nwu_euler = euler_rpy(global_nwu_pose.linear());
+        roll_nwu = global_nwu_euler[0];
+        pitch_nwu = global_nwu_euler[1];
+        yaw_nwu = global_nwu_euler[2];
 
         // yaw_nwu = constrain_between_180(yaw_nwu);
 

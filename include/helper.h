@@ -103,6 +103,47 @@ Vector3d rotate_vector(Vector3d rotation, Vector3d translation)
     return rotatedP.vec();
 }
 
+Vector3d euler_rpy(Matrix3d R)
+{
+    Vector3d euler_out;
+    // Each vector is a row of the matrix
+    Vector3d m_el[3];
+    m_el[0] = Vector3d(R(0,0), R(0,1), R(0,2));
+    m_el[1] = Vector3d(R(1,0), R(1,1), R(1,2));
+    m_el[2] = Vector3d(R(2,0), R(2,1), R(2,2));
+
+    // Check that pitch is not at a singularity
+    if (abs(m_el[2].x()) >= 1)
+    {
+        euler_out.z() = 0;
+
+        // From difference of angles formula
+        double delta = atan2(m_el[2].y(),m_el[2].z());
+        if (m_el[2].x() < 0)  //gimbal locked down
+        {
+            euler_out.y() = M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+        else // gimbal locked up
+        {
+            euler_out.y() = -M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+    }
+    else
+    {
+        euler_out.y() = - asin(m_el[2].x());
+
+        euler_out.x() = atan2(m_el[2].y()/cos(euler_out.y()), 
+            m_el[2].z()/cos(euler_out.y()));
+
+        euler_out.z() = atan2(m_el[1].x()/cos(euler_out.y()), 
+            m_el[0].x()/cos(euler_out.y()));
+    }
+
+    return euler_out;
+}
+
 /* 
 * @brief Transform pose according to the translation and rpy given
 */

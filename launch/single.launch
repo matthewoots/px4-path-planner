@@ -7,7 +7,7 @@
     <arg name="vehicle" default="iris"/>
     <arg name="world" default="$(find mavlink_sitl_gazebo)/worlds/empty.world"/>
     <!-- gazebo configs -->
-    <arg name="gui" default="true"/>
+    <arg name="gui" default="false"/>
     <arg name="debug" default="false"/>
     <arg name="verbose" default="false"/>
     <arg name="paused" default="false"/>
@@ -56,24 +56,20 @@
             <arg name="tgt_component" value="1"/>
         </include>
 	    <!-- PATH PLANNER -->
-	    <node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner0" output="screen">
+	    <node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
 		    <rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg xid)"/>
             <param name="package_directory" value="$(find px4_path_planner)"/>
     	</node>
-        <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization0" output="screen">
+        <node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
         </node>
-	    <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone0" output="screen">
+	    <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone" output="screen">
             <param name="agent_id" value="$(arg xid)"/>
             <param name="control_mode" value="velocity"/>
             <!-- <param name="velocity_gain" value="0.001"/> -->
         </node>
-
-		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization" output="screen">
-			<param name="agent_id" value="$(arg xid)"/>
-		</node>
 		
 		<node type="rviz" name="rviz" pkg="rviz" args="-d $(find px4_path_planner)/rviz/px4_path_planner.rviz" />
     </group>
