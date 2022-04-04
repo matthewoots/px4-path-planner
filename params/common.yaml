@@ -1,3 +1,6 @@
+# Running Threads
+threads: 4
+
 # Command Parameters
 setpoint_raw_mode: true
 unpack_from_local_file: false
@@ -12,7 +15,7 @@ unique_id_range: 20
 
 # Agent Parameters
 takeoff_height: 1.6
-common_max_vel: 0.8
+common_max_vel: 0.6
 common_min_vel: 0.5
 
 # Optimization Parameters
@@ -20,7 +23,7 @@ optimization_rate: 3
 weight_smooth: 7.5
 weight_feas: 5.0
 weight_term: 0.8
-weight_static: 2.5
+weight_static: 3.0
 weight_reci: 3.0
-max_acc: 0.10
-finite_time_horizon: 10.0
+max_acc: 0.08
+finite_time_horizon: 9.0

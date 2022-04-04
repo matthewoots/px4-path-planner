@@ -39,13 +39,14 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~");
     // The setpoint publishing rate MUST be faster than 2Hz
     taskmaster taskmaster(nh);
-    ros::MultiThreadedSpinner spinner(4);
+    ros::MultiThreadedSpinner spinner(taskmaster._threads);
     spinner.spin();
     return 0;
 }
 
 taskmaster::taskmaster(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
 {
+    _nh.param<int>("threads", _threads, 3);
     _nh.param<int>("spline_order", _order, 3);
     _nh.param<int>("unique_id_range", _unique_id_range, 10);
     _nh.param<int>("control_points_division", _control_points_division, 1);
@@ -867,6 +868,10 @@ void taskmaster::missionTimer(const ros::TimerEvent &)
                         mission_type_count++;
                         printf("%s[main.cpp] Moving on to next mission, idx %d\n", KGRN, mission_type_count);
                         
+                        last_mission_pos = global_pos;
+                        last_mission_yaw = yaw_nwu;
+                        uav_task = kHover;
+
                         // *** This uses ENU, obsolete since we use NWU ***
                         // TrajectoryGeneration(Vector3d (uav_pose.pose.position.x, uav_pose.pose.position.y, uav_pose.pose.position.z), 
                         //     mission_wp[mission_type_count], kHover, kMission);

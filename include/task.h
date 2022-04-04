@@ -227,6 +227,9 @@ private:
     ros::Time last_pose_time;
 
 public:
+
+    int _threads;
+
     taskmaster(ros::NodeHandle &nodeHandle);
     ~taskmaster();
 
@@ -811,7 +814,7 @@ public:
 
             // We assume we are receiving only one waypoint
             if (rrt_node.RRT(pcl_pc2, start_pose, wp.col(0), 
-                no_fly_zone))
+                no_fly_zone,_threads))
             {
                 // Get transformed obs map from RRT
                 query_pcl = rrt_node.get_query_pcl();

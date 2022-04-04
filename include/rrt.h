@@ -163,7 +163,7 @@ public:
     }
 
     bool RRT(sensor_msgs::PointCloud2 pcl_pc, 
-    Vector3d start, Vector3d end, vector<VectorXd> no_fly_zone)
+    Vector3d start, Vector3d end, vector<VectorXd> no_fly_zone, int threads)
     {
         pcl::PointCloud<pcl::PointXYZ>::Ptr original_pcl_pc = 
             pcl2_converter(pcl_pc);
@@ -289,7 +289,7 @@ public:
         {
             std::vector<std::future<std::vector<Vector3d>>> futures;
 
-            for (size_t i = 0; i < 4; i++)
+            for (size_t i = 0; i < max(1,threads-1); i++)
             {
                 futures.push_back(
                     std::async(std::launch::async, [&]()

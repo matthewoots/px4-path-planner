@@ -120,6 +120,7 @@ class rrt_node
 
         // double random_num = dis(generator);
 
+        // Map origin is at 0,0,0 which is the center, start is -ve and end is on positive
 
         // Provide to .2 decimals
         // srand((unsigned)(ros::WallTime::now().toNSec()));
@@ -166,7 +167,7 @@ class rrt_node
 
         index = near_node(*random_node);
         
-        if((separation(random_node->position, nodes[index]->position)) < step_size)
+        if((sq_separation(random_node->position, nodes[index]->position)) < pow(step_size,2))
             return;
         else
         {
@@ -203,7 +204,7 @@ class rrt_node
             (nodes[index]->children).push_back(step_node);
             
             if((check_validity(step_node->position, end_node.position)) && 
-                (separation(step_node->position,end_node.position) < step_size/1.5))
+                (sq_separation(step_node->position,end_node.position) < pow(step_size/1.5,2)))
             {
                 printf("%sReached path!\n", KGRN);
                 reached = true;
@@ -216,32 +217,32 @@ class rrt_node
         iter++;
 
         double final_secs =ros::Time::now().toSec() - prev;
-        printf("%squery (%s%.2lf %.2lf %.2lf%s) time-taken (%s%.4lf%s)\n", 
-            KBLU, KNRM,
-            random_node->position.x(),
-            random_node->position.y(),
-            random_node->position.z(),
-            KBLU, KNRM, final_secs, KBLU);
+        // printf("%squery (%s%.2lf %.2lf %.2lf%s) time-taken (%s%.4lf%s)\n", 
+            // KBLU, KNRM,
+            // random_node->position.x(),
+            // random_node->position.y(),
+            // random_node->position.z(),
+            // KBLU, KNRM, final_secs, KBLU);
     }
 
     // [near_node] is responsible for finding the nearest node in the tree 
     // for a particular random node. 
     int near_node(Node random)
     {
-        double min_dist = dmax;
+        double sq_min_dist = dmax;
         // We give dist a default value if total node is 1 it will fall back on this
-        double dist = separation(start_node.position, random.position);
+        double sq_dist = sq_separation(start_node.position, random.position);
         
         int linking_node = 0;
 
         for(int i = 0; i < total_nodes; i++)
         {
             // Other nodes than start node
-            dist = separation(nodes[i]->position, random.position);
+            sq_dist = sq_separation(nodes[i]->position, random.position);
             // Evaluate distance
-            if(dist < min_dist)
+            if(sq_dist < sq_min_dist)
             {
-                min_dist = dist;
+                sq_min_dist = sq_dist;
                 linking_node = i;
             }
         }
@@ -250,13 +251,13 @@ class rrt_node
 
     // [separation] function takes two coordinates
     // as its input and returns the distance between them.
-    double separation(Vector3d p, Vector3d q)
+    double sq_separation(Vector3d p, Vector3d q)
     {
         Vector3d v;
         v.x() = p.x() - q.x();
         v.y() = p.y() - q.y();
         v.z() = p.z() - q.z();
-        return sqrt(pow(v.x(), 2) + pow(v.y(), 2) + pow(v.z(), 2));
+        return pow(v.x(), 2) + pow(v.y(), 2) + pow(v.z(), 2);
     }
 
     // [stepping] function takes the random node generated and its nearest node in the tree 
@@ -364,9 +365,9 @@ class rrt_node
 
         for (int i = 0; i < total; i++)
         {
-            double tmp = separation(point, 
+            double sq_tmp = sq_separation(point, 
                 Vector3d(obs->points[i].x, obs->points[i].y, obs->points[i].z));
-            if (tmp < obs_threshold)
+            if (sq_tmp < pow(obs_threshold,2))
                 return false;
         }
         return true;    
@@ -438,13 +439,13 @@ class rrt_node
     // constructor
     rrt_node()
     {
-        cout<<"Constructor called"<<endl;
+        // cout<<"Constructor called"<<endl;
     }
  
     // destructor
     ~rrt_node()
     {
-        cout<<"Destructor called"<<endl;
+        // cout<<"Destructor called"<<endl;
     }
 
     bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
@@ -533,7 +534,7 @@ class rrt_node
         step_size = _step_size;
         iter = 0;
         line_search_division = _line_search_division;
-        printf("%s[rrt_standalone.h] Initialized! \n", KBLU);
+        // printf("%s[rrt_standalone.h] Initialized! \n", KBLU);
         // srand(time(NULL));
     }
 

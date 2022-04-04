@@ -316,7 +316,7 @@ namespace bs
             MatrixXd gradient = MatrixXd::Zero(3,col);
             VectorXd grad_single = VectorXd::Zero(col * row);
 
-            double pz_expansion_factor = 1.5;
+            double pz_expansion_factor = 2.0;
 
             // printf("%s[bspline_optimization.h] SA Cost %lf!\n", KBLU, weight_static * fx_static);
 
