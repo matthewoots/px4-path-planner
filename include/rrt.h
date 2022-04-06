@@ -181,7 +181,7 @@ public:
         // Do the preparation for transformation
         // Find the translation vector and the yaw angle
         Vector3d tmp_vect = end - start;
-        yaw = atan2(tmp_vect.y(), tmp_vect.x()) / 3.1415926535 * 180;
+        yaw = atan2(tmp_vect.y(), tmp_vect.x()) / M_PI * 180;
         Vector3d rotation = Vector3d(0,0,yaw);
 
         translation = Vector3d(_origin.x(), _origin.y(), 0);       
@@ -228,7 +228,7 @@ public:
 
         // We can crop the pointcloud to the dimensions that we are using
         // Origin will already to (0,0,0)
-        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cropped_pc1 = pcl2_filter(
+        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cropped_pc1 = pcl_ptr_filter(
             transformed_pcl_pc, Vector3d(0,0,_origin.z()), _map_size);
 
         // *** For DEBUG ***
@@ -413,10 +413,10 @@ public:
         // Vector3d end_pose = e;
 
         // Start position will be at rrt_path.size()-1
-        MatrixXd global_cp = setClampedPath(wp, 
+        MatrixXd global_cp = set_clamped_path(wp, 
         2, 4, _order, rrt_path[rrt_path.size()-1]);
-        VectorXd knots = setKnotsPath(global_cp, 1, _order);
-        std::vector<Vector3d> bs_tmp = updateFullPath(global_cp, 
+        VectorXd knots = set_knots_path(global_cp, 1, _order);
+        std::vector<Vector3d> bs_tmp = update_full_path(global_cp, 
             1, _order, knots);
 
         // Since the nodes are flipped we have to flip them back first

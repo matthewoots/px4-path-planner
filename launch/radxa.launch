@@ -24,9 +24,6 @@ echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}"
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg _uav_id)"/>
 			<param name="package_directory" value="$(find px4_path_planner)"/>
-            <param name="nwu_offset_x" value="0.0"/>
-            <param name="nwu_offset_y" value="0.0"/>
-            <param name="nwu_offset_z" value="0.0"/>
 		</node>
 
 		<include file="$(find mavros)/launch/px4.launch">

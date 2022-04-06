@@ -27,7 +27,7 @@
 * https://github.com/swadhagupta/RRT/blob/master/rrt.cpp
 * https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
 */
-#include <rrt_helper.h>
+#include <helper.h>
 
 #include <iostream>
 #include <string>
@@ -52,7 +52,7 @@
 
 using namespace Eigen;
 using namespace std;
-using namespace rrt_helper;
+using namespace helper;
 
 #define dmax std::numeric_limits<double>::max();
 
@@ -321,7 +321,7 @@ class rrt_node
             
 
             // ------ Optimization on PCL ------
-            tmp_obs = pcl2_filter_ptr(local_obs, tmp, 
+            tmp_obs = pcl_ptr_filter(local_obs, tmp, 
                 Vector3d(2*step_size, 2*step_size, 2*step_size));
             size_t num_points = tmp_obs->size();
             int total = static_cast<int>(num_points);
@@ -356,23 +356,6 @@ class rrt_node
         return true;
     }
 
-    // Terrible brute force method that very upsettingly have poor performance
-    bool obstacle_map_filter(Vector3d point)
-    {
-        // Load obstacle map
-        size_t num_points = obs->size();
-        int total = static_cast<int>(num_points);
-
-        for (int i = 0; i < total; i++)
-        {
-            double sq_tmp = sq_separation(point, 
-                Vector3d(obs->points[i].x, obs->points[i].y, obs->points[i].z));
-            if (sq_tmp < pow(obs_threshold,2))
-                return false;
-        }
-        return true;    
-    }
-
     VectorXd linspace(double min, double max, double n)
     {
         VectorXd linspaced((int)n);
@@ -401,35 +384,6 @@ class rrt_node
         pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
         
         return tmp_cloud;
-    }
-
-    /* 
-    * @brief Filter point cloud with the dimensions given
-    */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr 
-        pcl2_filter_ptr(pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, 
-        Vector3d centroid, Vector3d dimension)
-    {   
-        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
-
-        float minX = centroid.x() - dimension.x()/2;
-        float maxX = centroid.x() + dimension.x()/2;
-
-        float minY = centroid.y() - dimension.y()/2;
-        float maxY = centroid.y() + dimension.y()/2;
-
-        float minZ = centroid.z() - dimension.z()/2;
-        float maxZ = centroid.z() + dimension.z()/2;
-
-        pcl::CropBox<pcl::PointXYZ> box_filter;
-        box_filter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-        box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
-
-        box_filter.setInputCloud(_pc);
-        box_filter.filter(*output);
-
-        // printf("%s[rrt_standalone.h] return fromPCLPointCloud2! \n", KBLU);
-        return output;
     }
 
 
