@@ -15,8 +15,8 @@ unique_id_range: 20
 
 # Agent Parameters
 takeoff_height: 1.6
-common_max_vel: 0.6
-common_min_vel: 0.5
+common_max_vel: 0.4
+common_min_vel: 0.4
 
 # Optimization Parameters
 optimization_rate: 3

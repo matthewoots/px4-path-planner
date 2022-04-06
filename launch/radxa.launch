@@ -19,7 +19,7 @@ echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}"
         <remap from="/$(arg _uav_id)/mission" to="/$(arg _uav_id)/global_planner_mission"/>
 	    <remap from="/$(arg _uav_id)/global_planner_formation" to="/$(arg _uav_id)/global_planner_mission"/>
 
-		<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner$(arg _uav_idx)" output="screen">
+		<node pkg="px4_path_planner" type="px4_path_planner_node" name="px4_path_planner" output="screen">
 			<rosparam command="load" file="$(find px4_path_planner)/params/common.yaml" />
 			<param name="wp_file_location" value="$(find px4_path_planner)/path/wp0.csv"/>
 			<param name="agent_id" value="$(arg _uav_id)"/>
@@ -32,16 +32,17 @@ echo "HOSTNAME = ${HOSTNAME} and UAV_GROUPNAME = ${UAV_GROUPNAME}"
 		<include file="$(find mavros)/launch/px4.launch">
 			<arg name="fcu_url" value="$(arg _fcu_url)" />
             <arg name="gcs_url" value="$(arg _gcs_url)" />
-            <arg name="tgt_system" value="$(arg _uav_idx)" />
+	    <arg name="tgt_system" value="100" if="$(eval arg('_uav_idx') ==0)" />
+            <arg name="tgt_system" value="$(arg _uav_idx)" unless="$(eval arg('_uav_idx') ==0)"/>
         </include>
 
-        <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone$(arg _uav_idx)" output="screen">
+        <node pkg="formation_controller" type="formation_controller_standalone" name="formation_controller_standalone" output="screen">
             <param name="agent_id" value="$(arg _uav_id)"/>
 	        <param name="control_mode" value="velocity"/>
             <!-- <param name="velocity_gain" value="0.001"/> -->
         </node>
 
-		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization$(arg _uav_idx)" output="screen">
+		<node pkg="px4_path_planner" type="px4_path_planner_visualization_node" name="px4_path_planner_visualization" output="screen">
 			<param name="agent_id" value="$(arg _uav_id)"/>
 		</node>
     </group>
