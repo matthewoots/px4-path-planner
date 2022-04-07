@@ -137,21 +137,22 @@ class rrt_node
         Vector3d transformed_vector = Vector3d((random_node->position).x(),
                 (random_node->position).y(), 0);
 
-        for (int i = 0; i < no_fly_zone.size(); i++)
-        {
-            // x_min, x_max, y_min, y_max in original frame
-            double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
-            double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
+        // No need no fly zone for random node since step node will handle it
+        // for (int i = 0; i < no_fly_zone.size(); i++)
+        // {
+        //     // x_min, x_max, y_min, y_max in original frame
+        //     double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
+        //     double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
             
-            // Let us transform the point back to original frame
-            geometry_msgs::Point n_tmp_path = backward_transform_point(
-            vector_to_point(transformed_vector), rotation, translation);
+        //     // Let us transform the point back to original frame
+        //     geometry_msgs::Point n_tmp_path = backward_transform_point(
+        //     vector_to_point(transformed_vector), rotation, translation);
 
-            // Reject point if it is in no fly zone
-            if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
-                n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
-                return;
-        }
+        //     // Reject point if it is in no fly zone
+        //     if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
+        //         n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
+        //         return;
+        // }
 
         // Constrain height within the min-max range
         // srand((unsigned)(ros::WallTime::now().toNSec()));
@@ -266,11 +267,17 @@ class rrt_node
     // of step_size from nearest node towards random node
     Vector3d stepping(Vector3d nearest_node, Vector3d random_node)
     {
+        std::random_device dev;
+        std:mt19937 generator(dev());
+        std::uniform_real_distribution<double> dis_step(0.5, 1.0);
+        
         Vector3d tmp = Vector3d::Zero();
         Vector3d step = Vector3d::Zero();
         Vector3d norm = Vector3d::Zero();
         double magnitude = 0.0;
         double x, y, z;
+
+        double random = dis_step(generator);
 
         tmp.x() = random_node.x() - nearest_node.x();
         tmp.y() = random_node.y() - nearest_node.y();
@@ -283,9 +290,9 @@ class rrt_node
         norm.y() = (tmp.y() / magnitude);
         norm.z() = (tmp.z() / magnitude);
 
-        step.x() = nearest_node.x() + step_size * norm.x();
-        step.y() = nearest_node.y() + step_size * norm.y();
-        step.z() = nearest_node.z() + step_size * norm.z();
+        step.x() = nearest_node.x() + step_size * random * norm.x();
+        step.y() = nearest_node.y() + step_size * random * norm.y();
+        step.z() = nearest_node.z() + step_size * random * norm.z();
 
         return step;
     }
@@ -321,8 +328,10 @@ class rrt_node
             
 
             // ------ Optimization on PCL ------
+            double factor_size = 1.5;
             tmp_obs = pcl_ptr_filter(local_obs, tmp, 
-                Vector3d(2*step_size, 2*step_size, 2*step_size));
+                Vector3d(factor_size*step_size, 
+                factor_size*step_size, factor_size*step_size));
             size_t num_points = tmp_obs->size();
             int total = static_cast<int>(num_points);
             // printf("%s[rrt_standalone.h] tmp_obs size %d! \n", KGRN, total);

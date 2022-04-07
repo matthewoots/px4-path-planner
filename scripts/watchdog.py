@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-import rospy
+import rospy, rostopic
 import rosnode
 import sys
 import os
@@ -21,6 +21,11 @@ nodes_to_check.append("basalt_vio_ros")
 nodes_to_check.append("apriltag_detection")
 nodes_to_check.append("loop_fusion")
 
+topics_to_check = [] 
+topics_to_check.append("mavros/setpoint_raw/local")
+topics_to_check.append("mavros/local_position/pose")
+topics_to_check.append("global_pose")
+
 rospy.init_node("watchdog")
 # print ("number of arguments", len(sys.argv)-1)
 lists = []
@@ -34,7 +39,17 @@ for x in range(len(sys.argv)-1):
         table[x][0] = sys.argv[x+1]
         count.append("0")
 # print (lists)  
-# print (nodes_to_check)      
+# print (nodes_to_check)
+
+sub_count = []
+h_count = []
+topic_counter = 0
+for j in range(len(lists)):
+        for k in range(len(topics_to_check)):
+                h_count.append(rostopic.ROSTopicHz(-1))  
+                sub_count.append(rospy.Subscriber(lists[j]+topics_to_check[k], rospy.AnyMsg, h_count[topic_counter].callback_hz, callback_args=lists[j]+topics_to_check[k])) 
+                topic_counter = topic_counter + 1
+                      
 
 rate = rospy.Rate(1) # ROS Rate at 5Hz
 while not rospy.is_shutdown():
@@ -68,4 +83,23 @@ while not rospy.is_shutdown():
         #display table
         print(tabulate(table, headers=col_names, tablefmt="github", stralign="center")) 
 
+        topic_counter = 0
+        for j in range(len(lists)):
+                print("-------")
+                for k in range(len(topics_to_check)):
+                        
+                        data = h_count[topic_counter].get_hz(lists[j]+topics_to_check[k])
+                        # print(type(data))
+                        hz = 0
+                        if data is None:
+                                hz = 0
+                        else:
+                                hz = data[0]
+                        print(lists[j]+topics_to_check[k] + " = " + str(hz)[:6] + " Hz")
+                        topic_counter = topic_counter + 1
+                
         rate.sleep()
+
+        
+
+        

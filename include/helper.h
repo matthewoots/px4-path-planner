@@ -147,33 +147,33 @@ Vector3d euler_rpy(Matrix3d R)
 /* 
 * @brief Transform pose according to the translation and rpy given
 */
-geometry_msgs::Point transform_point(geometry_msgs::Point _p,
-    Vector3d _rpy, Vector3d _translation)
-{
-    geometry_msgs::Point point;
+// geometry_msgs::Point transform_point(geometry_msgs::Point _p,
+//     Vector3d _rpy, Vector3d _translation)
+// {
+//     geometry_msgs::Point point;
 
-    geometry_msgs::TransformStamped transform;
-    geometry_msgs::Quaternion q; geometry_msgs::Vector3 t;
-    tf2::Quaternion quat_tf;
+//     geometry_msgs::TransformStamped transform;
+//     geometry_msgs::Quaternion q; geometry_msgs::Vector3 t;
+//     tf2::Quaternion quat_tf;
 
-    t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
+//     t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
 
-    double deg2rad = 1.0 / 180.0 * M_PI;
+//     double deg2rad = 1.0 / 180.0 * M_PI;
 
-    quat_tf.setRPY(_rpy.x() * deg2rad, 
-        _rpy.y() * deg2rad, 
-        _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
-    q = tf2::toMsg(quat_tf);
+//     quat_tf.setRPY(_rpy.x() * deg2rad, 
+//         _rpy.y() * deg2rad, 
+//         _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+//     q = tf2::toMsg(quat_tf);
 
-    transform.transform.translation = t;
-    transform.transform.rotation = q;
-    transform.child_frame_id = "/base";
-    transform.header.frame_id = "/map";
+//     transform.transform.translation = t;
+//     transform.transform.rotation = q;
+//     transform.child_frame_id = "/base";
+//     transform.header.frame_id = "/map";
 
-    tf2::doTransform(_p, point, transform);
+//     tf2::doTransform(_p, point, transform);
 
-    return point;
-}
+//     return point;
+// }
 
 geometry_msgs::Point vector_to_point(Vector3d v)
 {
@@ -398,10 +398,26 @@ sensor_msgs::PointCloud2 transform_sensor_cloud(sensor_msgs::PointCloud2 _pc,
 geometry_msgs::Point forward_transform_point(geometry_msgs::Point _p,
     Vector3d _rpy, Vector3d _translation)
 {
-    geometry_msgs::Point tmp = transform_point(_p,
-        - Vector3d(0, 0, 0), - _translation);
-    tmp = transform_point(tmp,
-        - Vector3d(0, 0, _rpy.z()), Vector3d(0, 0, 0));
+    // geometry_msgs::Point tmp = transform_point(_p,
+    //     - Vector3d(0, 0, 0), - _translation);
+    // tmp = transform_point(tmp,
+    //     - Vector3d(0, 0, _rpy.z()), Vector3d(0, 0, 0));
+
+    geometry_msgs::Point tmp;
+
+    double roll = 0, pitch = 0, yaw = -_rpy.z() / 180.0 * M_PI;    
+    Quaterniond q;
+    q = AngleAxisd(roll, Vector3d::UnitX())
+        * AngleAxisd(pitch, Vector3d::UnitY())
+        * AngleAxisd(yaw, Vector3d::UnitZ());
+
+    Eigen::Quaterniond p;
+    p.w() = 0;
+    p.vec() = Vector3d(_p.x, _p.y, _p.z) - _translation;
+    Eigen::Quaterniond rotatedP = q * p * q.inverse(); 
+
+    tmp = vector_to_point(rotatedP.vec());
+
     return tmp;
 }
 
@@ -411,9 +427,23 @@ geometry_msgs::Point forward_transform_point(geometry_msgs::Point _p,
 geometry_msgs::Point backward_transform_point(geometry_msgs::Point _p,
     Vector3d _rpy, Vector3d _translation)
 {
-    geometry_msgs::Point tmp = transform_point(_p,
-        - Vector3d(0, 0, - _rpy.z()), Vector3d(0, 0, 0));
-    tmp = transform_point(tmp, - Vector3d(0, 0, 0), _translation);
+    // geometry_msgs::Point tmp = transform_point(_p,
+    //     - Vector3d(0, 0, - _rpy.z()), Vector3d(0, 0, 0));
+    // tmp = transform_point(tmp, - Vector3d(0, 0, 0), _translation);
+
+    geometry_msgs::Point tmp;
+    double roll = 0, pitch = 0, yaw = _rpy.z() / 180.0 * M_PI;    
+    Quaterniond q;
+    q = AngleAxisd(roll, Vector3d::UnitX())
+        * AngleAxisd(pitch, Vector3d::UnitY())
+        * AngleAxisd(yaw, Vector3d::UnitZ());
+
+    Eigen::Quaterniond p;
+    p.w() = 0;
+    p.vec() = Vector3d(_p.x, _p.y, _p.z);
+    Eigen::Quaterniond rotatedP = q * p * q.inverse(); 
+
+    tmp = vector_to_point(rotatedP.vec() + _translation);
 
     return tmp;
 }

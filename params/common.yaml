@@ -20,10 +20,10 @@ common_min_vel: 0.4
 
 # Optimization Parameters
 optimization_rate: 3
-weight_smooth: 7.5
+weight_smooth: 5.5
 weight_feas: 5.0
 weight_term: 0.8
 weight_static: 3.0
 weight_reci: 3.0
 max_acc: 0.08
-finite_time_horizon: 9.0
+finite_time_horizon: 8.0
