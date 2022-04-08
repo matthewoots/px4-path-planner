@@ -289,7 +289,7 @@ public:
         {
             std::vector<std::future<std::vector<Vector3d>>> futures;
 
-            for (size_t i = 0; i < max(1,threads-1); i++)
+            for (size_t i = 0; i < max(1,threads-2); i++)
             {
                 futures.push_back(
                     std::async(std::launch::async, [&]()

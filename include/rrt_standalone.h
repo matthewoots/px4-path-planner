@@ -207,7 +207,7 @@ class rrt_node
             if((check_validity(step_node->position, end_node.position)) && 
                 (sq_separation(step_node->position,end_node.position) < pow(step_size/1.5,2)))
             {
-                printf("%sReached path!\n", KGRN);
+                //printf("%sReached path!\n", KGRN);
                 reached = true;
                 nodes[total_nodes++] = &end_node;
                 end_node.parent = step_node;
@@ -328,7 +328,7 @@ class rrt_node
             
 
             // ------ Optimization on PCL ------
-            double factor_size = 1.5;
+            double factor_size = 1.2;
             tmp_obs = pcl_ptr_filter(local_obs, tmp, 
                 Vector3d(factor_size*step_size, 
                 factor_size*step_size, factor_size*step_size));
@@ -465,7 +465,7 @@ class rrt_node
 
         no_fly_zone.clear(); 
         no_fly_zone = _no_fly_zone;
-        printf("%s[rrt_standalone.h] no_fly_zone size %lu! \n", KBLU, no_fly_zone.size());
+        //printf("%s[rrt_standalone.h] no_fly_zone size %lu! \n", KBLU, no_fly_zone.size());
 
         rotation = _rotation;
         translation = _translation;
@@ -507,16 +507,16 @@ class rrt_node
         int total = static_cast<int>(num_points);
         double prev = ros::Time::now().toSec();
         double fail_timer = ros::Time::now().toSec();
-        printf("%s[rrt_standalone.h] Obstacle size %d! \n", KGRN, total);
-        printf("%s[rrt_standalone.h] Start run process! \n", KGRN);
+        //printf("%s[rrt_standalone.h] Obstacle size %d! \n", KGRN, total);
+        //printf("%s[rrt_standalone.h] Start run process! \n", KGRN);
         
         while(!reached && !ready)
         {
             rrt();
             if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > timeout)
             {
-                printf("%s[rrt_standalone.h] Failed run process! \n", KRED);
-                printf("%s[rrt_standalone.h] Exceeded max nodes or runtime too long! \n", KRED);
+                //printf("%s[rrt_standalone.h] Failed run process! \n", KRED);
+                //printf("%s[rrt_standalone.h] Exceeded max nodes or runtime too long! \n", KRED);
                 error = true;
                 break;
             }
@@ -526,9 +526,9 @@ class rrt_node
         if (ready || error)
             return std::vector<Vector3d>();
 
-        printf("%sSolution found! with %d iter and %d nodes\n", 
-            KGRN, iter, total_nodes);
-        printf("%sTotal Time Taken = %lf!\n", KGRN, ros::Time::now().toSec() - prev);
+        //printf("%sSolution found! with %d iter and %d nodes\n", 
+        //    KGRN, iter, total_nodes);
+        //printf("%sTotal Time Taken = %lf!\n", KGRN, ros::Time::now().toSec() - prev);
 
         ready = true;
 
