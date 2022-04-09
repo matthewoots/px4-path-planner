@@ -232,6 +232,8 @@ private:
     Affine3d global_nwu_pose;
     Vector3d nwu_local_to_nwu_global;
 
+    double nwu_yaw_correction = 0.0;
+
 public:
 
     int _threads;
@@ -414,6 +416,14 @@ public:
         local_to_nwu_global_t.translate(global_offset);
         local_to_nwu_global_t.rotate(enu_to_nwu().inverse());
 
+        // For relocalizing yaw
+        // Quaterniond q_corrected;
+        // q_corrected = AngleAxisd(0, Vector3d::UnitX())
+        //     * AngleAxisd(0, Vector3d::UnitY())
+        //     * AngleAxisd(nwu_yaw_correction, Vector3d::UnitZ());
+        
+        // local_to_nwu_global_t.rotate(q_corrected);
+
         global_nwu_pose = local_to_nwu_global_t * current_transform;
         Quaterniond nwu_global_q = Quaterniond(global_nwu_pose.linear());
         // Vector3d global_eigen_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
@@ -503,7 +513,26 @@ public:
         // Writes directly to the global pose
         global_offset.x() += global_correction.x();
         global_offset.y() += global_correction.y();
-          
+
+        Quaterniond q_rl = orientation_to_quaternion(rl_global_pose.pose.orientation);
+
+        Vector3d rl_nwu_euler = euler_rpy(q_rl.toRotationMatrix());
+        double yaw_difference = rl_nwu_euler.z() - yaw_nwu;
+        // printf("%s[task.h] yaw error %lf\n", KGRN, yaw_difference);
+
+        double true_yaw_correction_value;
+        // 3 types on condition > 3.14, < -3.14 and inbetween
+        if (yaw_difference > M_PI)
+            true_yaw_correction_value = yaw_difference - 2 * M_PI;
+        else if (yaw_difference < -M_PI)
+            true_yaw_correction_value = yaw_difference + 2 * M_PI;
+        else
+            true_yaw_correction_value = yaw_difference;
+        
+        double sign = true_yaw_correction_value / abs(true_yaw_correction_value);
+
+        double correction = min(0.02, abs(true_yaw_correction_value));
+        nwu_yaw_correction += sign * correction;
     }
 
     /** @brief Get bypass command message */
@@ -709,7 +738,19 @@ public:
         // Global pose offset does not include z axis so we should take it out
         
         // Global NWU to Local ENU transformation
-        Affine3d nwu_global_to_local_t = Affine3d::Identity(); 
+        Affine3d nwu_global_to_local_t = Affine3d::Identity();
+
+        // For relocalizing yaw
+        // Quaterniond q_corrected;
+        // q_corrected = AngleAxisd(0, Vector3d::UnitX())
+        //     * AngleAxisd(0, Vector3d::UnitY())
+        //     * AngleAxisd(nwu_yaw_correction, Vector3d::UnitZ());
+        
+        // nwu_global_to_local_t.rotate(q_corrected.inverse());
+        // command_yaw += M_PI_2 + nwu_yaw_correction;
+        // geometry_msgs::PoseStamped vel_enu_sp;
+        // Vector3d enu_command_vel = q_corrected.toRotationMatrix() * enu_to_nwu().toRotationMatrix() * command_vel;   
+
         nwu_global_to_local_t.rotate(enu_to_nwu());
         nwu_global_to_local_t.translate( -nwu_local_to_nwu_global);
 
@@ -848,9 +889,15 @@ public:
 
             rrt_sample rrt_node; vector<double> rrt_params;
             if (formation_mission_mode)
+            {
                 rrt_params = formation_param;
+                printf("%s[task.h] Using RRT Formation\n", KGRN);
+            }
             else
+            {
                 rrt_params = solo_param;
+                printf("%s[task.h] Using RRT Solo\n", KGRN);
+            }
             if (!rrt_node.initialize_rrt_params(rrt_params, (int)rrt_param_size))
             {
                 printf("%s[task.h] TrajectoryGeneration fail to set path \n", KRED);

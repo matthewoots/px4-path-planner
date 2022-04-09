@@ -84,7 +84,8 @@ class rrt_node
 
     bool reached;
     double obs_threshold;
-    int step_size, iter, total_nodes;
+    int iter, total_nodes;
+    double step_size;
     int line_search_division;
     double _min_height, _max_height;
 
@@ -134,8 +135,8 @@ class rrt_node
         double random_y = dis(generator);
         (random_node->position).y() = random_y * map_size.y() - map_size.y()/2;
         
-        Vector3d transformed_vector = Vector3d((random_node->position).x(),
-                (random_node->position).y(), 0);
+        // Vector3d transformed_vector = Vector3d((random_node->position).x(),
+        //         (random_node->position).y(), 0);
 
         // No need no fly zone for random node since step node will handle it
         // for (int i = 0; i < no_fly_zone.size(); i++)
@@ -159,8 +160,6 @@ class rrt_node
         // double random_z = (double)rand() / (INT_MAX + 1.0);
         double random_z = dis(generator);
         double tmp =  random_z * map_size.z() - map_size.z()/2 + origin.z();
-        tmp = max(tmp, _min_height);
-        tmp = min(tmp, _max_height);
         (random_node->position).z() = tmp;        
 
         // printf("%srandom_xyz %s %lf %lf %lf %s\n", 
@@ -168,32 +167,27 @@ class rrt_node
 
         index = near_node(*random_node);
         
-        if((sq_separation(random_node->position, nodes[index]->position)) < pow(step_size,2))
-            return;
-        else
+        step_node->position = stepping(nodes[index]->position, random_node->position);
+        Vector3d transformed_vector = Vector3d(step_node->position.x(),
+            step_node->position.y(), step_node->position.z());
+        // Let us transform the point back to original frame
+        geometry_msgs::Point n_tmp_path = backward_transform_point(
+            vector_to_point(transformed_vector), rotation, translation);
+        for (int i = 0; i < no_fly_zone.size(); i++)
         {
-            step_node->position = stepping(nodes[index]->position, random_node->position);
-            Vector3d transformed_vector = Vector3d(step_node->position.x(),
-                step_node->position.y(), step_node->position.z());
-            // Let us transform the point back to original frame
-            geometry_msgs::Point n_tmp_path = backward_transform_point(
-                vector_to_point(transformed_vector), rotation, translation);
-            for (int i = 0; i < no_fly_zone.size(); i++)
+            // x_min, x_max, y_min, y_max in original frame
+            double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
+            double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
+            
+            // Reject point if it is in no fly zone
+            if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
+                n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
             {
-                // x_min, x_max, y_min, y_max in original frame
-                double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
-                double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
-                
-                // Reject point if it is in no fly zone
-                if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
-                    n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
-                {
-                    // printf("%sRejected x %lf y %lf!\n", KRED, n_tmp_path.x, n_tmp_path.y);
-                    return;
-                }
-                // printf("%sAccepted x %lf y %lf!\n", KGRN, n_tmp_path.x, n_tmp_path.y);
-                    
+                // printf("%sRejected x %lf y %lf!\n", KRED, n_tmp_path.x, n_tmp_path.y);
+                return;
             }
+            // printf("%sAccepted x %lf y %lf!\n", KGRN, n_tmp_path.x, n_tmp_path.y);
+                
         }
 
         bool flag = check_validity(nodes[index]->position, step_node->position);
@@ -269,7 +263,7 @@ class rrt_node
     {
         std::random_device dev;
         std:mt19937 generator(dev());
-        std::uniform_real_distribution<double> dis_step(0.5, 1.0);
+        std::uniform_real_distribution<double> dis_step(0.6, 1.0);
         
         Vector3d tmp = Vector3d::Zero();
         Vector3d step = Vector3d::Zero();
@@ -282,17 +276,32 @@ class rrt_node
         tmp.x() = random_node.x() - nearest_node.x();
         tmp.y() = random_node.y() - nearest_node.y();
         tmp.z() = random_node.z() - nearest_node.z();
-        magnitude = sqrt(pow(tmp.x(),2) + 
-            pow(tmp.y(),2) +
-            pow(tmp.z(),2));
 
-        norm.x() = (tmp.x() / magnitude);
-        norm.y() = (tmp.y() / magnitude);
-        norm.z() = (tmp.z() / magnitude);
+        // magnitude = sqrt(pow(tmp.x(),2) + 
+        //     pow(tmp.y(),2) +
+        //     pow(tmp.z(),2));
 
+        // norm is the vector
+        norm = tmp / tmp.norm();
+        // norm.x() = (tmp.x() / magnitude);
+        // norm.y() = (tmp.y() / magnitude);
+        // norm.z() = (tmp.z() / magnitude);
+        
         step.x() = nearest_node.x() + step_size * random * norm.x();
         step.y() = nearest_node.y() + step_size * random * norm.y();
         step.z() = nearest_node.z() + step_size * random * norm.z();
+
+        step.x() = min(max(step.x(), -map_size.x()/2), map_size.x()/2);
+        step.y() = min(max(step.y(), -map_size.y()/2), map_size.y()/2);
+        step.z() = min(max(step.z(), _min_height),_max_height);
+
+        // printf("%s  step (%lf %lf %lf) nearest_node (%lf %lf %lf) norm (%lf %lf %lf)\n", 
+        //     KGRN, step.x(), step.y(), step.z(),
+        //     nearest_node.x(), nearest_node.y(), nearest_node.z(),
+        //     norm.x(), norm.y(), norm.z());
+        
+        // printf("%s  random %lf step_size %lf\n", 
+        //     KBLU, random, step_size);
 
         return step;
     }
@@ -307,6 +316,37 @@ class rrt_node
         int n = line_search_division;
         MatrixXd line_vector;
         line_vector = MatrixXd::Zero(3, n);
+
+        Vector3d valid_origin;
+        valid_origin.x() = (p.x() + q.x()) / 2;
+        valid_origin.y() = (p.y() + q.y()) / 2;
+        valid_origin.z() = (p.z() + q.z()) / 2;
+
+        // printf("%s  p (%lf %lf %lf) q (%lf %lf %lf) m (%lf %lf %lf)\n", 
+        //     KGRN, p.x(), p.y(), p.z(),
+        //     q.x(), q.y(), q.z(),
+        //     valid_origin.x(), valid_origin.y(), valid_origin.z());
+
+        Vector3d local_map_size;
+        local_map_size.x() = abs(p.x() - q.x()) + 2*obs_threshold;
+        local_map_size.y() = abs(p.y() - q.y()) + 2*obs_threshold;
+        local_map_size.z() = abs(p.z() - q.z()) + 2*obs_threshold;
+
+        // printf("%s  local_map_size (%lf %lf %lf)\n", 
+        //     KBLU, local_map_size.x(), local_map_size.y(), local_map_size.z());
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs;
+        local_obs = pcl_ptr_filter(obs, valid_origin, 
+                local_map_size);
+
+        size_t local_num_points = local_obs->size();
+        int local_points_total = static_cast<int>(local_num_points);
+
+        if (local_points_total == 0)
+            return true;
+
+        // pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs = obs;
+
         for (int i = 0; i < 3; i++)
         {
             line_vector.row(i) = linspace(p[i], q[i], (double)n);
@@ -317,7 +357,6 @@ class rrt_node
         {
             Vector3d tmp;
             pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_obs;
-            pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs = obs;
 
             tmp.x() = line_vector.col(i).x();
             tmp.y() = line_vector.col(i).y();
@@ -328,15 +367,14 @@ class rrt_node
             
 
             // ------ Optimization on PCL ------
-            double factor_size = 1.2;
             tmp_obs = pcl_ptr_filter(local_obs, tmp, 
-                Vector3d(factor_size*step_size, 
-                factor_size*step_size, factor_size*step_size));
+                Vector3d(2*obs_threshold, 
+                2*obs_threshold, 2*obs_threshold));
             size_t num_points = tmp_obs->size();
             int total = static_cast<int>(num_points);
             // printf("%s[rrt_standalone.h] tmp_obs size %d! \n", KGRN, total);
 
-            size_t t_num_points = obs->size();
+            size_t t_num_points = tmp_obs->size();
             int t_total = static_cast<int>(t_num_points);
             // printf("%s[rrt_standalone.h] obs size %d! \n", KGRN, t_total);
             

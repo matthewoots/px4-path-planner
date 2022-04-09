@@ -250,7 +250,12 @@ public:
 
         double t_z = _origin.z() * _scale_z;
 
-        double step_size = _step_size + _scale_z / 2.0;
+        double step_size;
+        if (_scale_z == 1.0)
+            step_size = _step_size;
+        else
+            step_size = _step_size + _scale_z / 2;
+        
 
         Vector3d t_t_start = Vector3d(t_start.x(), t_start.y(), t_start.z() *_scale_z);
         Vector3d t_t_end = Vector3d(t_end.x(), t_end.y(), t_end.z() *_scale_z);
@@ -258,7 +263,7 @@ public:
         
         // Set line division to floor of step_size
         // Size must be 3 or more for linspace to work
-        int line_search_division = max(4,(int)floor(step_size)); 
+        int line_search_division = max(4,(int)floor(step_size/_obs_threshold)); 
 
         size_t num_points = original_pcl_pc->size();
         int total = static_cast<int>(num_points);
@@ -285,8 +290,10 @@ public:
         ready = false;
         std::vector<Vector3d> final_result;
 
+        int rrt_counter = 0;
         while (!ready)
         {
+            printf("%s  rrt retry %d! \n", KRED, rrt_counter);
             std::vector<std::future<std::vector<Vector3d>>> futures;
 
             for (size_t i = 0; i < max(1,threads-2); i++)
@@ -323,6 +330,7 @@ public:
                     break;
                 }
             }
+            rrt_counter++;
         } //while(!ready)
 
         // if (rrt_tries > _max_tries)
