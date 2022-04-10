@@ -25,6 +25,7 @@ topics_to_check = []
 topics_to_check.append("mavros/setpoint_raw/local")
 topics_to_check.append("mavros/local_position/pose")
 topics_to_check.append("global_pose")
+topics_to_check.append("mavros/odom_nwu")
 
 rospy.init_node("watchdog")
 # print ("number of arguments", len(sys.argv)-1)

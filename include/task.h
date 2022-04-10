@@ -417,14 +417,18 @@ public:
         local_to_nwu_global_t.rotate(enu_to_nwu().inverse());
 
         // For relocalizing yaw
-        // Quaterniond q_corrected;
-        // q_corrected = AngleAxisd(0, Vector3d::UnitX())
-        //     * AngleAxisd(0, Vector3d::UnitY())
-        //     * AngleAxisd(nwu_yaw_correction, Vector3d::UnitZ());
+        Quaterniond q_corrected;
+        q_corrected = AngleAxisd(0, Vector3d::UnitX())
+            * AngleAxisd(0, Vector3d::UnitY())
+            * AngleAxisd(nwu_yaw_correction, Vector3d::UnitZ());
         
         // local_to_nwu_global_t.rotate(q_corrected);
 
-        global_nwu_pose = local_to_nwu_global_t * current_transform;
+        // NWU yaw correction
+        Affine3d yaw_correction_t = Affine3d::Identity(); 
+        yaw_correction_t.rotate(q_corrected);
+
+        global_nwu_pose = local_to_nwu_global_t * current_transform * yaw_correction_t;
         Quaterniond nwu_global_q = Quaterniond(global_nwu_pose.linear());
         // Vector3d global_eigen_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
         Vector3d global_nwu_euler = euler_rpy(global_nwu_pose.linear());
@@ -747,7 +751,7 @@ public:
         //     * AngleAxisd(nwu_yaw_correction, Vector3d::UnitZ());
         
         // nwu_global_to_local_t.rotate(q_corrected.inverse());
-        // command_yaw += M_PI_2 + nwu_yaw_correction;
+        command_yaw += M_PI_2 - nwu_yaw_correction;
         // geometry_msgs::PoseStamped vel_enu_sp;
         // Vector3d enu_command_vel = q_corrected.toRotationMatrix() * enu_to_nwu().toRotationMatrix() * command_vel;   
 
@@ -766,7 +770,7 @@ public:
 
         // Wrap around ENU yaw command
 
-        command_yaw += M_PI_2;
+        // command_yaw += M_PI_2;
         command_yaw = constrain_between_180(command_yaw);
 
         // std::cout << KBLU << "[task.h] enu_cmd_yaw=" << KNRM <<
