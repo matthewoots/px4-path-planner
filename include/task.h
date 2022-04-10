@@ -430,7 +430,7 @@ public:
 
         global_nwu_pose = local_to_nwu_global_t * current_transform * yaw_correction_t;
         Quaterniond nwu_global_q = Quaterniond(global_nwu_pose.linear());
-        // Vector3d global_eigen_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
+	// Vector3d global_eigen_nwu_euler = global_nwu_pose.linear().eulerAngles(2,1,0);
         Vector3d global_nwu_euler = euler_rpy(global_nwu_pose.linear());
         roll_nwu = global_nwu_euler[0];
         pitch_nwu = global_nwu_euler[1];
@@ -533,10 +533,13 @@ public:
         else
             true_yaw_correction_value = yaw_difference;
         
-        double sign = true_yaw_correction_value / abs(true_yaw_correction_value);
+	double correction = 0.0;
+        if (true_yaw_correction_value > 0.0)
+            correction = min(0.02, true_yaw_correction_value);
+        else if (true_yaw_correction_value < 0.0)
+            correction = max(-0.02, true_yaw_correction_value);
 
-        double correction = min(0.02, abs(true_yaw_correction_value));
-        nwu_yaw_correction += sign * correction;
+        nwu_yaw_correction += correction;
     }
 
     /** @brief Get bypass command message */

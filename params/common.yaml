@@ -22,7 +22,7 @@ common_min_vel: 0.45
 optimization_rate: 3
 weight_smooth: 5.5
 weight_feas: 5.0
-weight_term: 0.8
+weight_term: 0.05
 weight_static: 3.0
 weight_reci: 3.0
 max_acc: 0.08
