@@ -165,6 +165,7 @@ public:
     bool RRT(sensor_msgs::PointCloud2 pcl_pc, 
     Vector3d start, Vector3d end, vector<VectorXd> no_fly_zone, int threads)
     {
+        rrt_path.clear();
         pcl::PointCloud<pcl::PointXYZ>::Ptr original_pcl_pc = 
             pcl2_converter(pcl_pc);
 
@@ -349,6 +350,7 @@ public:
 
         if (final_result.empty())
         {
+            printf("%s[rrt.cpp] final_result is empty! %s\n", KRED, KNRM);
             printf("%s[rrt.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
             return false;
         }
@@ -367,13 +369,57 @@ public:
             transformed_path.push_back(tmp_path);
         }
 
+        std::vector<Vector3d> shortest_transformed_path;
+        shortest_transformed_path.push_back(transformed_path[0]);
+        int shortest_idx = 0;
+
+        // Find Shortest Path
+        while (shortest_idx < transformed_path.size()-1)
+        {
+            // If the next point is the last point, we just push back the last point
+            if (shortest_idx+1 == transformed_path.size()-1)
+            {
+                shortest_idx = transformed_path.size()-1;
+                shortest_transformed_path.push_back(transformed_path[shortest_idx]);
+                printf("    last value %d\n", shortest_idx);
+                break;
+            }
+
+            // Check 2 steps ahead since the next value would be the fall back by default
+            for (int k = shortest_idx + 2; k < transformed_path.size(); k++)
+            {
+                if (!check_validity_pcl(shortest_transformed_path[shortest_transformed_path.size()-1],
+                    transformed_path[k], _obs_threshold,
+                    transformed_cropped_pc))
+                {
+                    // We take the index that was successful which is the previous value
+                    shortest_idx = k-1;
+                    shortest_transformed_path.push_back(transformed_path[shortest_idx]);
+                    printf("    next value %d\n", shortest_idx);
+                    break;
+                }
+                else if (k == transformed_path.size()-1)
+                {
+                    shortest_idx = k;
+                    shortest_transformed_path.push_back(transformed_path[shortest_idx]);
+                    printf("    next value %d\n", shortest_idx);
+                    break;
+                }
+            }
+        }
+
         std::vector<Vector3d> path;
+
+        // Somehow the shortest path algorithm will miss the end data
+        // Bspline somehow misses the last point
+        path.push_back(end);
+        path.push_back(end);
 
         // Vector3d transformed_translation_to_original = rotate_vector(
         //     -rotation, -translation);
-        for (int j = 0; j < transformed_path.size(); j++)
+        for (int j = 0; j < shortest_transformed_path.size(); j++)
         {
-            Vector3d tmp_path = transformed_path[j];
+            Vector3d tmp_path = shortest_transformed_path[j];
             
             // geometry_msgs::Point n_tmp_path = transform_point(
             //     vector_to_point(tmp_path),
@@ -386,6 +432,7 @@ public:
         }
 
         // Somehow the algorithm will miss the start data
+        path.push_back(start);
         path.push_back(start);
 
         // Now the whole path is flipped, hence we need to flip it back in bspline
@@ -433,6 +480,132 @@ public:
             bspline.push_back(bs_tmp[i]);
 
 
+    }
+
+    bool check_validity_pcl(Vector3d p, Vector3d q, double obs_threshold,
+        pcl::PointCloud<pcl::PointXYZ>::Ptr obs)
+    {
+        Vector3d large, small;
+        int i = 0, j1 = 0, j2 = 0;
+        Vector3d difference = q - p;
+        int n = (int)ceil(difference.norm() / obs_threshold * 1.5);
+        MatrixXd line_vector;
+        line_vector = MatrixXd::Zero(3, n);
+
+        Vector3d valid_origin;
+        valid_origin.x() = (p.x() + q.x()) / 2;
+        valid_origin.y() = (p.y() + q.y()) / 2;
+        valid_origin.z() = (p.z() + q.z()) / 2;
+
+        // printf("%s  p (%lf %lf %lf) q (%lf %lf %lf) m (%lf %lf %lf)\n", 
+        //     KGRN, p.x(), p.y(), p.z(),
+        //     q.x(), q.y(), q.z(),
+        //     valid_origin.x(), valid_origin.y(), valid_origin.z());
+
+        Vector3d local_map_size;
+        local_map_size.x() = abs(p.x() - q.x()) + 2*obs_threshold;
+        local_map_size.y() = abs(p.y() - q.y()) + 2*obs_threshold;
+        local_map_size.z() = abs(p.z() - q.z()) + 2*obs_threshold;
+
+        // printf("%s  local_map_size (%lf %lf %lf)\n", 
+        //     KBLU, local_map_size.x(), local_map_size.y(), local_map_size.z());
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs;
+        local_obs = pcl_ptr_filter(obs, valid_origin, 
+                local_map_size);
+
+        size_t local_num_points = local_obs->size();
+        int local_points_total = static_cast<int>(local_num_points);
+
+        if (local_points_total == 0)
+            return true;
+
+        // pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs = obs;
+
+        for (int i = 0; i < 3; i++)
+        {
+            line_vector.row(i) = linspace(p[i], q[i], (double)n);
+        }
+        int column_size = line_vector.cols();
+
+        for(int i = 0; i < column_size; i++)
+        {
+            Vector3d tmp;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_obs;
+
+            tmp.x() = line_vector.col(i).x();
+            tmp.y() = line_vector.col(i).y();
+            tmp.z() = line_vector.col(i).z();
+
+            // Check to see whether the point in the line 
+            // collides with an obstacle
+            
+
+            // ------ Optimization on PCL ------
+            tmp_obs = pcl_ptr_filter(local_obs, tmp, 
+                Vector3d(2*obs_threshold, 
+                2*obs_threshold, 2*obs_threshold));
+            size_t num_points = tmp_obs->size();
+            int total = static_cast<int>(num_points);
+            // printf("%s[rrt_standalone.h] tmp_obs size %d! \n", KGRN, total);
+
+            size_t t_num_points = tmp_obs->size();
+            int t_total = static_cast<int>(t_num_points);
+            // printf("%s[rrt_standalone.h] obs size %d! \n", KGRN, t_total);
+            
+            
+            if (total == 0)
+                continue;
+
+            if (kdtree_pcl(line_vector.col(i), tmp_obs, obs_threshold))
+                return false;
+
+            // -------- Original on PCL (2) ------
+            // ---- (1) is 20-100x faster than (2) -----
+            // if (kdtree_pcl(line_vector.col(i), obs, obs_threshold))
+            //     return false;
+
+            // -------- Original on PCL (3) ------
+            // ---- (2) is 100x faster than (3) -----
+            // if (obstacle_map_filter(line_vector.col(i)))
+            //     return false;
+
+            // Check to see whether the line is within the boundaries
+            // Don't think we need this check
+            // if((i<0) || (i>400) || (j1<0) || (j1>400) || (j2<0) || (j2>400))
+            //     continue;
+        }
+        return true;
+    }
+
+    bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
+        double c)
+    {
+        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+
+        kdtree.setInputCloud(_obs);
+
+        pcl::PointXYZ searchPoint;
+        searchPoint.x = point.x();
+        searchPoint.y = point.y();
+        searchPoint.z = point.z();
+
+        std::vector<int> pointIdxRadiusSearch;
+        std::vector<float> pointRadiusSquaredDistance;
+
+        // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
+
+        float radius = (float)c;
+
+        if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
+        {
+            for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 };
