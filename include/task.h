@@ -927,7 +927,7 @@ public:
                 // Get transformed obs map from RRT
                 query_pcl = rrt_node.get_query_pcl();
                 // Get bspline from RRT
-                rrt_node.rrt_bspline(4);
+                rrt_node.rrt_bspline(0);
                 key_wp.resize(3,rrt_node.bspline.size());
 
                 for (int i = 0; i < rrt_node.bspline.size(); i++)

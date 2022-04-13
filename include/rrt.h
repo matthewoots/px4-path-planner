@@ -412,8 +412,8 @@ public:
 
         // Somehow the shortest path algorithm will miss the end data
         // Bspline somehow misses the last point
-        path.push_back(end);
-        path.push_back(end);
+        // path.push_back(end);
+        // path.push_back(end);
 
         // Vector3d transformed_translation_to_original = rotate_vector(
         //     -rotation, -translation);
@@ -432,8 +432,8 @@ public:
         }
 
         // Somehow the algorithm will miss the start data
-        path.push_back(start);
-        path.push_back(start);
+        // path.push_back(start);
+        // path.push_back(start);
 
         // Now the whole path is flipped, hence we need to flip it back in bspline
 
@@ -446,6 +446,13 @@ public:
     void rrt_bspline(int _order)
     {
         bspline.clear();
+
+        if (_order == 0)
+        {
+            for (int i = rrt_path.size() - 1 ; i >= 0; i--)
+                bspline.push_back(rrt_path[i]);
+            return;
+        }
 
         int v_size = rrt_path.size();
         MatrixXd wp = MatrixXd::Zero(3,v_size);
