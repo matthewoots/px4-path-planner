@@ -22,6 +22,11 @@
  * 
  */
 
+#ifndef BSP_OPT_H
+#define BSP_OPT_H
+
+#include <helper.h>
+
 #include <iostream>
 #include <string>
 #include <cmath>
@@ -30,7 +35,6 @@
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <LBFGSB.h>
-#include <pcl/kdtree/kdtree_flann.h>
 
 using namespace Eigen;
 using namespace std;
@@ -149,9 +153,6 @@ namespace bs
             reciprocalAvoidanceCost(cp, current_knots);
             // printf("%s[bspline_optimization.h] RA Cost %lf!\n", KBLU, weight_reci * fx_reci);
             // printf("%s[bspline_optimization.h] ----------------------------\n", KYEL);
-
-            // if (fx_reci > 0)
-            //     printf("%s[bspline_optimization.h] RA Cost %lf!\n", KBLU, weight_reci * fx_reci);
 
             // printf("%s[bspline_optimization.h] SM %lf | FS %lf | TM %lf | SA %lf | RA %lf\n", KYEL,
             //     weight_smooth * fx_smooth, weight_feas * fx_feas, weight_term * fx_term, 
@@ -335,30 +336,10 @@ namespace bs
                 if (tmp_obs->points.size() == 0)
                     continue;
                 // printf("%s[bspline_optimization.h] tmp_obs size %d!\n", KBLU, tmp_obs->points.size());
-                    
-                bool naninf_found = false;
-                // for (int itr = 0; itr < tmp_obs->points.size(); itr++)
-                // {
-                //     if (isnan(tmp_obs->points[itr].x) ||
-                //         isnan(tmp_obs->points[itr].y) ||
-                //         isnan(tmp_obs->points[itr].z) ||
-                //         isinf(tmp_obs->points[itr].x) ||
-                //         isinf(tmp_obs->points[itr].y) ||
-                //         isinf(tmp_obs->points[itr].z) )
-                //     {
-                //         printf("[staticCollisionCost] Found a point with inf or nan!");
-                //         std::cout << tmp_obs->points[itr].x << "," << 
-                //         tmp_obs->points[itr].y << "," << tmp_obs->points[itr].z << std::endl;
-                //         naninf_found = true;
-                //     }
-                // }
-
-                if (naninf_found)
-                    continue;
 
                 double prev_kd_tree = ros::Time::now().toSec();
-                vector<Vector3d> kd_points = kdtree_pcl(cp.col(i), tmp_obs, 
-                    pz_expansion_factor * protected_zone);
+                vector<Vector3d> kd_points = kdtree_find_points_pcl(cp.col(i), tmp_obs, 
+                    pz_expansion_factor * protected_zone, 10);
                 // printf("%s[bspline_optimization.h] SA : KDtree Run Time %lf!\n", KCYN, ros::Time::now().toSec() - prev_kd_tree);
                 // printf("%s[bspline_optimization.h] kd tree search!\n", KBLU);
 
@@ -367,18 +348,6 @@ namespace bs
                 // printf("%s[bspline_optimization.h] kd point size %d!\n", KBLU, kd_points.size());
                 
                 double prev_indi_points = ros::Time::now().toSec();
-                // Vector3d avg;
-                // for (int j = 0; j < kd_points.size(); j++)
-                //     avg += kd_points[j];
-                
-                // avg = avg / kd_points.size();
-
-                // Vector3d diff = cp.col(i) - avg;
-                // Vector3d diff_dir = diff / diff.norm();
-                // double sq_diff = pow(diff.norm(), 2);
-                // double sq_protected = pow(protected_zone, 2);
-                // gradient.col(i) = gradient.col(i) + diff_dir * sqrt(sq_protected - sq_diff);
-                // cost = cost + sq_diff;
 
                 // ** Size is too big and optimization may take a few seconds
                 for (int j = 0; j < kd_points.size(); j++)
@@ -523,63 +492,6 @@ namespace bs
 
             fx_reci = cost;
 
-        }
-
-        vector<Vector3d> kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
-        double c)
-        {
-            pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-            vector<Vector3d> points;
-
-            kdtree.setInputCloud(_obs);
-
-            // Maybe we need to check to see any number here is NA, or inf
-
-            pcl::PointXYZ searchPoint;
-            searchPoint.x = point.x();
-            searchPoint.y = point.y();
-            searchPoint.z = point.z();
-
-            // if (isnan(searchPoint.x) ||
-            //     isnan(searchPoint.y) ||
-            //     isnan(searchPoint.z) ||
-            //     isinf(searchPoint.x) ||
-            //     isinf(searchPoint.y) ||
-            //     isinf(searchPoint.z) )
-            // {
-            //     printf("[kdtree_pcl] Found a point with inf or nan!");
-            //     std::cout << searchPoint.x << "," << 
-            //     searchPoint.y << "," << searchPoint.z << std::endl;
-            //     return points;
-            // }
-
-            // K nearest neighbor search
-            int K = 10;
-
-            std::vector<int> pointIdxKNNSearch(K);
-            std::vector<float> pointKNNSquaredDistance(K);
-
-            // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
-
-            float radius = (float)c;
-
-            if ( kdtree.nearestKSearch (searchPoint, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0 )
-            {
-                // for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-                for (std::size_t i = 0; i < pointIdxKNNSearch.size (); ++i)
-                {
-                    Vector3d kd_point;
-                    // When the point is larger than the radius, we do not consider it
-                    if (pointKNNSquaredDistance[i] - pow(radius,2) > 0)
-                        continue;
-                    kd_point.x() = (*_obs)[ pointIdxKNNSearch[i] ].x; 
-                    kd_point.y() = (*_obs)[ pointIdxKNNSearch[i] ].y;
-                    kd_point.z() = (*_obs)[ pointIdxKNNSearch[i] ].z;
-                    points.push_back(kd_point);
-                }
-            }
-
-            return points;
         }
 
         /* 
@@ -751,3 +663,5 @@ namespace bs
     };
     
 }
+
+#endif

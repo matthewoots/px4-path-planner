@@ -1,7 +1,0 @@
-debug: true
-control_points_interval: 0.1
-unique_id_range: 100
-trajectory_interval: 0.1
-takeoff_height: 1.3
-common_max_vel: 0.5
-setpoint_raw_mode: true

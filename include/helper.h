@@ -53,9 +53,9 @@
 #include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/filters/crop_box.h>
+#include <pcl/kdtree/kdtree_flann.h>
 
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
-#include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 using namespace Eigen;
@@ -82,17 +82,15 @@ Vector3d rotate_vector(Vector3d rotation, Vector3d translation)
 {
     // https://github.com/felipepolido/EigenExamples
     // for affine3d examples
-    geometry_msgs::Quaternion q;
-    tf2::Quaternion quat_tf;
     double deg2rad = - 1.0 / 180.0 * M_PI;
 
-    quat_tf.setRPY(rotation.x() * deg2rad, 
-        rotation.y() * deg2rad, 
-        rotation.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
-    q = tf2::toMsg(quat_tf);
+    Quaterniond q;
+    q = AngleAxisd(rotation.x() * deg2rad, Vector3d::UnitX())
+        * AngleAxisd(rotation.y() * deg2rad, Vector3d::UnitY())
+        * AngleAxisd(rotation.z() * deg2rad, Vector3d::UnitZ());
     
     // w,x,y,z
-    Eigen::Quaterniond rot(q.w, q.x, q.y, q.z);
+    Eigen::Quaterniond rot(q.w(), q.x(), q.y(), q.z());
     rot.normalize();
 
     Eigen::Quaterniond p;
@@ -518,6 +516,92 @@ std::vector<Vector3d> update_full_path(MatrixXd _global_cp, int _knotdiv, int _o
     }
 
     return tmp;
+}
+
+bool kdtree_collide_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
+    double c)
+{
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+
+    kdtree.setInputCloud(_obs);
+
+    pcl::PointXYZ searchPoint;
+    searchPoint.x = point.x();
+    searchPoint.y = point.y();
+    searchPoint.z = point.z();
+
+    std::vector<int> pointIdxRadiusSearch;
+    std::vector<float> pointRadiusSquaredDistance;
+
+    // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
+
+    float radius = (float)c;
+
+    if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
+    {
+        for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+vector<Vector3d> kdtree_find_points_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
+    double c, int K)
+{
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    vector<Vector3d> points;
+
+    kdtree.setInputCloud(_obs);
+
+    // Maybe we need to check to see any number here is NA, or inf
+
+    pcl::PointXYZ searchPoint;
+    searchPoint.x = point.x();
+    searchPoint.y = point.y();
+    searchPoint.z = point.z();
+
+    // if (isnan(searchPoint.x) ||
+    //     isnan(searchPoint.y) ||
+    //     isnan(searchPoint.z) ||
+    //     isinf(searchPoint.x) ||
+    //     isinf(searchPoint.y) ||
+    //     isinf(searchPoint.z) )
+    // {
+    //     printf("[kdtree_pcl] Found a point with inf or nan!");
+    //     std::cout << searchPoint.x << "," << 
+    //     searchPoint.y << "," << searchPoint.z << std::endl;
+    //     return points;
+    // }
+
+    // K nearest neighbor search
+
+    std::vector<int> pointIdxKNNSearch(K);
+    std::vector<float> pointKNNSquaredDistance(K);
+
+    // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
+
+    float radius = (float)c;
+
+    if ( kdtree.nearestKSearch (searchPoint, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0 )
+    {
+        // for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+        for (std::size_t i = 0; i < pointIdxKNNSearch.size (); ++i)
+        {
+            Vector3d kd_point;
+            // When the point is larger than the radius, we do not consider it
+            if (pointKNNSquaredDistance[i] - pow(radius,2) > 0)
+                continue;
+            kd_point.x() = (*_obs)[ pointIdxKNNSearch[i] ].x; 
+            kd_point.y() = (*_obs)[ pointIdxKNNSearch[i] ].y;
+            kd_point.z() = (*_obs)[ pointIdxKNNSearch[i] ].z;
+            points.push_back(kd_point);
+        }
+    }
+
+    return points;
 }
 
 // *** End Helper functions ***

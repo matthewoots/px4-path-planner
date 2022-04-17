@@ -27,6 +27,9 @@
 * https://github.com/swadhagupta/RRT/blob/master/rrt.cpp
 * https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
 */
+#ifndef RRT_STANDALONE_H
+#define RRT_STANDALONE_H
+
 #include <helper.h>
 
 #include <iostream>
@@ -41,12 +44,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
 
-#include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/filters/crop_box.h>
 
 #include <geometry_msgs/Point.h>
 
@@ -134,26 +133,8 @@ class rrt_node
         // double random_y = (double)rand() / (INT_MAX + 1.0);
         double random_y = dis(generator);
         (random_node->position).y() = random_y * map_size.y() - map_size.y()/2;
-        
-        // Vector3d transformed_vector = Vector3d((random_node->position).x(),
-        //         (random_node->position).y(), 0);
 
         // No need no fly zone for random node since step node will handle it
-        // for (int i = 0; i < no_fly_zone.size(); i++)
-        // {
-        //     // x_min, x_max, y_min, y_max in original frame
-        //     double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
-        //     double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
-            
-        //     // Let us transform the point back to original frame
-        //     geometry_msgs::Point n_tmp_path = backward_transform_point(
-        //     vector_to_point(transformed_vector), rotation, translation);
-
-        //     // Reject point if it is in no fly zone
-        //     if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
-        //         n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
-        //         return;
-        // }
 
         // Constrain height within the min-max range
         // srand((unsigned)(ros::WallTime::now().toNSec()));
@@ -273,23 +254,12 @@ class rrt_node
 
         double random = dis_step(generator);
 
-        tmp.x() = random_node.x() - nearest_node.x();
-        tmp.y() = random_node.y() - nearest_node.y();
-        tmp.z() = random_node.z() - nearest_node.z();
-
-        // magnitude = sqrt(pow(tmp.x(),2) + 
-        //     pow(tmp.y(),2) +
-        //     pow(tmp.z(),2));
+        tmp = random_node - nearest_node;
 
         // norm is the vector
         norm = tmp / tmp.norm();
-        // norm.x() = (tmp.x() / magnitude);
-        // norm.y() = (tmp.y() / magnitude);
-        // norm.z() = (tmp.z() / magnitude);
         
-        step.x() = nearest_node.x() + step_size * random * norm.x();
-        step.y() = nearest_node.y() + step_size * random * norm.y();
-        step.z() = nearest_node.z() + step_size * random * norm.z();
+        step = nearest_node + step_size * random * norm;
 
         step.x() = min(max(step.x(), -map_size.x()/2), map_size.x()/2);
         step.y() = min(max(step.y(), -map_size.y()/2), map_size.y()/2);
@@ -382,7 +352,7 @@ class rrt_node
             if (total == 0)
                 continue;
 
-            if (kdtree_pcl(line_vector.col(i), tmp_obs, obs_threshold))
+            if (kdtree_collide_pcl(line_vector.col(i), tmp_obs, obs_threshold))
                 return false;
 
             // -------- Original on PCL (2) ------
@@ -416,23 +386,6 @@ class rrt_node
         return linspaced;
     }
 
-    /* 
-    * @brief Convert point cloud from ROS sensor message to 
-    * pcl point ptr
-    */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr 
-        pcl2_converter(sensor_msgs::PointCloud2 _pc)
-    {
-        pcl::PCLPointCloud2 pcl_pc2;
-        pcl_conversions::toPCL(_pc, pcl_pc2);
-
-        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-        
-        pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
-        
-        return tmp_cloud;
-    }
-
 
     public:
 
@@ -447,36 +400,6 @@ class rrt_node
     ~rrt_node()
     {
         // cout<<"Destructor called"<<endl;
-    }
-
-    bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
-        double c)
-    {
-        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-
-        kdtree.setInputCloud(_obs);
-
-        pcl::PointXYZ searchPoint;
-        searchPoint.x = point.x();
-        searchPoint.y = point.y();
-        searchPoint.z = point.z();
-
-        std::vector<int> pointIdxRadiusSearch;
-        std::vector<float> pointRadiusSquaredDistance;
-
-        // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
-
-        float radius = (float)c;
-
-        if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
-        {
-            for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     void initialize(Vector3d _start, 
@@ -599,3 +522,5 @@ class rrt_node
         return error;
     }
 };
+
+#endif

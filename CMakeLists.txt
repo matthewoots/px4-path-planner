@@ -7,12 +7,10 @@ project(px4_path_planner)
 ## Find catkin macros and libraries
 find_package(catkin 
   COMPONENTS
-  geometry_msgs
   mavros_msgs
   roscpp
   std_msgs
   common_msgs
-  tf
   tf2_ros
   tf2_sensor_msgs
   pcl
@@ -42,12 +40,10 @@ find_package(Eigen3 REQUIRED)
 
 catkin_package(
   CATKIN_DEPENDS 
-  geometry_msgs 
   mavros_msgs 
   roscpp 
   std_msgs 
   common_msgs
-  tf
   tf2_ros
   pcl
   
