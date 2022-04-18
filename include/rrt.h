@@ -174,10 +174,7 @@ public:
             end.x(), end.y(), end.z());
 
         // Find the origin of the transformed frame
-        Vector3d _origin;
-        _origin.x() = (start.x() + end.x()) / 2;
-        _origin.y() = (start.y() + end.y()) / 2;
-        _origin.z() = (start.z() + end.z()) / 2;
+        Vector3d _origin = (start + end) / 2;
         
         // Do the preparation for transformation
         // Find the translation vector and the yaw angle
@@ -495,7 +492,7 @@ public:
         Vector3d large, small;
         int i = 0, j1 = 0, j2 = 0;
         Vector3d difference = q - p;
-        int n = (int)ceil(difference.norm() / obs_threshold * 1.5);
+        int n = (int)ceil(difference.norm() / obs_threshold);
         MatrixXd line_vector;
         line_vector = MatrixXd::Zero(3, n);
 
@@ -564,7 +561,7 @@ public:
             if (total == 0)
                 continue;
 
-            if (kdtree_pcl(line_vector.col(i), tmp_obs, obs_threshold))
+            if (kdtree_collide_pcl(line_vector.col(i), tmp_obs, obs_threshold))
                 return false;
 
             // -------- Original on PCL (2) ------
@@ -583,36 +580,6 @@ public:
             //     continue;
         }
         return true;
-    }
-
-    bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
-        double c)
-    {
-        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-
-        kdtree.setInputCloud(_obs);
-
-        pcl::PointXYZ searchPoint;
-        searchPoint.x = point.x();
-        searchPoint.y = point.y();
-        searchPoint.z = point.z();
-
-        std::vector<int> pointIdxRadiusSearch;
-        std::vector<float> pointRadiusSquaredDistance;
-
-        // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
-
-        float radius = (float)c;
-
-        if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
-        {
-            for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
 };
