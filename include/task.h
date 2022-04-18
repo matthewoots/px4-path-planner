@@ -867,11 +867,11 @@ public:
         else
             selected_speed = taskmaster::_common_max_vel;
 
-	int traj_order;
-	if (uav_task == kTakeOff || uav_task == kLand)
-	    traj_order = 3;
-	else
-	    traj_order = taskmaster::_order;
+        int traj_order;
+        if (uav_task == kTakeOff || uav_task == kLand)
+            traj_order = 3;
+        else
+            traj_order = taskmaster::_order;
 
         traj.Initialise(traj_order, 
             taskmaster::_control_points_division, 
@@ -925,8 +925,7 @@ public:
             {
                 // Get transformed obs map from RRT
                 query_pcl = rrt_node.get_query_pcl();
-                // Get bspline from RRT
-                rrt_node.rrt_bspline(0);
+                rrt_node.reorder();
                 key_wp.resize(3,rrt_node.bspline.size());
 
                 for (int i = 0; i < rrt_node.bspline.size(); i++)

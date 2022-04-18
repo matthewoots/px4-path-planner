@@ -260,8 +260,8 @@ public:
         // *** End of adding in transform ***
         
         // Set line division to floor of step_size
-        // Size must be 3 or more for linspace to work
-        int line_search_division = max(4,(int)floor(step_size/_obs_threshold)); 
+        // Size must be 4 or more for linspace to work
+        int line_search_division = max(4,(int)ceil(step_size/_obs_threshold)); 
 
         size_t num_points = original_pcl_pc->size();
         int total = static_cast<int>(num_points);
@@ -354,14 +354,13 @@ public:
 
         // Extract path from transformed frame into normal frame
         // Remember to factor in z scale back
-        std::vector<Vector3d> transformed_path1 = final_result;
         std::vector<Vector3d> transformed_path;
 
         // Transformed path needs to scale back the z
-        for (int j = 0; j < transformed_path1.size(); j++)
+        for (int j = 0; j < final_result.size(); j++)
         {
-            Vector3d tmp_path = Vector3d(transformed_path1[j].x(), 
-                transformed_path1[j].y(), transformed_path1[j].z() / _scale_z);
+            Vector3d tmp_path = Vector3d(final_result[j].x(), 
+                final_result[j].y(), final_result[j].z() / _scale_z);
 
             transformed_path.push_back(tmp_path);
         }
@@ -369,39 +368,43 @@ public:
         std::vector<Vector3d> shortest_transformed_path;
         shortest_transformed_path.push_back(transformed_path[0]);
         int shortest_idx = 0;
+        int previous_value = 0;
 
         // Find Shortest Path
-        while (shortest_idx < transformed_path.size()-1)
+        while (shortest_idx < transformed_path.size() - 1)
         {
             // If the next point is the last point, we just push back the last point
-            if (shortest_idx+1 == transformed_path.size()-1)
-            {
-                shortest_idx = transformed_path.size()-1;
-                shortest_transformed_path.push_back(transformed_path[shortest_idx]);
-                printf("    last value %d\n", shortest_idx);
-                break;
-            }
 
             // Check 2 steps ahead since the next value would be the fall back by default
-            for (int k = shortest_idx + 2; k < transformed_path.size(); k++)
+            for (int k = shortest_idx + 1; k < transformed_path.size(); k++)
             {
+                // Take the latest found control point and compare to the next k value
                 if (!check_validity_pcl(shortest_transformed_path[shortest_transformed_path.size()-1],
                     transformed_path[k], _obs_threshold,
                     transformed_cropped_pc))
                 {
                     // We take the index that was successful which is the previous value
                     shortest_idx = k-1;
+
+                    // Sanity check to see whether value overlaps and matches previous value (prevent infinite loop)
+                    if (shortest_idx == previous_value)
+                    {
+                        shortest_idx = k;
+                        printf("    Sanity check on %d\n", shortest_idx);
+                    }
+
                     shortest_transformed_path.push_back(transformed_path[shortest_idx]);
                     printf("    next value %d\n", shortest_idx);
+                    previous_value = shortest_idx;
                     break;
                 }
-                else if (k == transformed_path.size()-1)
+                else if (k == transformed_path.size() - 1)
                 {
                     shortest_idx = k;
                     shortest_transformed_path.push_back(transformed_path[shortest_idx]);
-                    printf("    next value %d\n", shortest_idx);
+                    printf("    last value %d\n", shortest_idx);
                     break;
-                }
+                }                
             }
         }
 
@@ -440,49 +443,13 @@ public:
         return true;
     }
 
-    void rrt_bspline(int _order)
+    void reorder()
     {
         bspline.clear();
 
-        if (_order == 0)
-        {
-            for (int i = rrt_path.size() - 1 ; i >= 0; i--)
-                bspline.push_back(rrt_path[i]);
-            return;
-        }
-
-        int v_size = rrt_path.size();
-        MatrixXd wp = MatrixXd::Zero(3,v_size);
-        
-        // We need to flip it back since RRT path is inverted 
-        for (int i = rrt_path.size()-1; i >= 0; i--)
-        {
-            wp(0,rrt_path.size()-1 - i) = rrt_path[i].x(); 
-            wp(1,rrt_path.size()-1 - i) = rrt_path[i].y(); 
-            wp(2,rrt_path.size()-1 - i) = rrt_path[i].z();
-        }
-
-        // Somehow the algorithm will miss the start data
-        // wp(0,v_size-1) = s.x(); 
-        // wp(1,v_size-1) = s.y(); 
-        // wp(2,v_size-1) = s.z();
-
-        // // Somehow the algorithm will miss the start data
-        // // Since the nodes are counting backwards, hence the start point is the end point
-        // Vector3d end_pose = e;
-
-        // Start position will be at rrt_path.size()-1
-        MatrixXd global_cp = set_clamped_path(wp, 
-        2, 4, _order, rrt_path[rrt_path.size()-1]);
-        VectorXd knots = set_knots_path(global_cp, 1, _order);
-        std::vector<Vector3d> bs_tmp = update_full_path(global_cp, 
-            1, _order, knots);
-
-        // Since the nodes are flipped we have to flip them back first
-        // Change back the order
-        for (int i = 0; i < bs_tmp.size(); i++)
-            bspline.push_back(bs_tmp[i]);
-
+        for (int i = rrt_path.size() - 1 ; i >= 0; i--)
+            bspline.push_back(rrt_path[i]);
+        return;
 
     }
 
